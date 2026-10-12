@@ -64,7 +64,7 @@ jobs:
             if ($tot -ne $totalBytes) { throw "$label total $tot != expected $totalBytes" }
             "$label OK ($tot bytes)."
           }
-          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 140449537
+          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 141664899
           tar -xzf v2src.tar.gz
           if (-not (Test-Path 'genesis_windows/installer/genesis_setup.iss')) { throw 'tarball did not contain genesis_windows/.' }
           'tarball extracted.'

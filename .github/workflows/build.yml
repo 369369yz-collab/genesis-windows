@@ -15,7 +15,7 @@
 #   softprops/action-gh-release@v3.0.3
 #                               efb35369e0ad2afab669f228072c1b0d510eae64
 #
-# Zero spend. 100% technical English.
+# Zero spend. 100% technical English.semidark/kokoro@b96fef95e6a746495f92443fac7c688f90fc57fc
 # =====================================================================
 name: GENESIS v2 cloud build
 
@@ -101,7 +101,7 @@ jobs:
           if (-not (Test-Path $wheel)) { throw "vendored ava wheel missing: $wheel" }
           & $py -m pip install --no-deps $wheel
           if ($LASTEXITCODE -ne 0) { throw 'ava_tts wheel install failed.' }
-          & $py -m pip install 'kokoro @ git+https://github.com/hexgrad/kokoro@b96fef9' click==8.2.1 huggingface-hub==0.34.4 numpy==1.26.4 sentencepiece==0.2.0 soundfile==0.13.1 transformers==4.51.3
+          & $py -m pip install 'kokoro @ git+https://github.com/semidark/kokoro@b96fef95e6a746495f92443fac7c688f90fc57fc' click==8.2.1 huggingface-hub==0.34.4 numpy==1.26.4 sentencepiece==0.2.0 soundfile==0.13.1 transformers==4.51.3
           if ($LASTEXITCODE -ne 0) { throw 'kokoro / pinned voice deps install failed.' }
           & $py -m pip install --require-hashes -r "$pkg\runtime\requirements.txt"
           if ($LASTEXITCODE -ne 0) { throw 'core requirements install failed.' }

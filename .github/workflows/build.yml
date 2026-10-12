@@ -15,7 +15,7 @@
 #   softprops/action-gh-release@v3.0.3
 #                               efb35369e0ad2afab669f228072c1b0d510eae64
 #
-# Zero spend. 100% technical English.semidark/kokoro@b96fef95e6a746495f92443fac7c688f90fc57fc
+# Zero spend. 100% technical English.semidark/kokoro@b96fef95e6a746414166489995f92443fac7c688f90fc57fc
 # =====================================================================
 name: GENESIS v2 cloud build
 
@@ -64,7 +64,7 @@ jobs:
             if ($tot -ne $totalBytes) { throw "$label total $tot != expected $totalBytes" }
             "$label OK ($tot bytes)."
           }
-          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 141664899
+          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 143665844
           tar -xzf v2src.tar.gz
           if (-not (Test-Path 'genesis_windows/installer/genesis_setup.iss')) { throw 'tarball did not contain genesis_windows/.' }
           'tarball extracted.'

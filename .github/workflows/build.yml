@@ -1,9 +1,9 @@
 # =====================================================================
-# GENESIS v2 — cloud build (GitHub Actions, free tier)
+# GENESIS v3 — cloud build (GitHub Actions, free tier)
 #
 # Trigger: workflow_dispatch (Actions tab > Run workflow).
-# Builds GENESIS-Setup-2.0.0.exe on a cloud Windows runner and attaches
-# it to the v2-ava release. Father downloads ONE .exe link. Done.
+# Builds the GENESIS setup .exe on a cloud Windows runner and attaches
+# it to the v3-modular release. Father downloads ONE .exe link. Done.
 #
 # Large files travel as byte-verified 64MB parts (the upload host caps
 # single files): they are downloaded part-by-part and reassembled on
@@ -17,13 +17,13 @@
 #
 # Zero spend. 100% technical English.semidark/kokoro@b96fef95e6a746495f92443fac7c688f90fc57fc
 # =====================================================================
-name: GENESIS v2 cloud build
+name: GENESIS v3 cloud build
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # create/update the v2-ava release
+  contents: write   # create/update the v3-modular release
 
 jobs:
   build:
@@ -64,7 +64,7 @@ jobs:
             if ($tot -ne $totalBytes) { throw "$label total $tot != expected $totalBytes" }
             "$label OK ($tot bytes)."
           }
-          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 143665844
+          Get-Parts 'tarball' '${{ vars.TARBALL_PART_URLS }}' '${{ vars.TARBALL_PART_BYTES }}' 'v2src.tar.gz' 143688439
           tar -xzf v2src.tar.gz
           if (-not (Test-Path 'genesis_windows/installer/genesis_setup.iss')) { throw 'tarball did not contain genesis_windows/.' }
           'tarball extracted.'
@@ -105,6 +105,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'kokoro / pinned voice deps install failed.' }
           & $py -m pip install --require-hashes -r "$pkg\runtime\requirements.txt"
           if ($LASTEXITCODE -ne 0) { throw 'core requirements install failed.' }
+          & $py -m pip install 'faster-whisper==1.2.1' 'sounddevice==0.5.2'
+          if ($LASTEXITCODE -ne 0) { throw 'faster-whisper / sounddevice install failed.' }
           'dependencies OK.'
 
       - name: Pre-production gate (launcher --check)
@@ -131,9 +133,9 @@ jobs:
           "Setup sha256: $hash"
           "SETUP_EXE=$($exe.FullName)" >> $env:GITHUB_ENV
 
-      - name: Attach to the v2-ava release
+      - name: Attach to the v3-modular release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
-          tag_name: v2-ava
-          name: GENESIS v2 (Ava voice)
+          tag_name: v3-modular
+          name: GENESIS v3 (modular core + auto-updater + ear)
           files: ${{ env.SETUP_EXE }}

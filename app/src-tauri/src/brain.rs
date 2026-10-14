@@ -52,6 +52,11 @@ pub struct BrainLauncher {
     status: Arc<Mutex<BrainStatus>>,
     llama_child: Option<Child>,
     brain_child: Option<Child>,
+    /// <app_local_data_dir>/boot.log — every boot stage is appended here so
+    /// a silent brain failure is diagnosable on any machine (the GUI gives
+    /// no hint; windows_subsystem hides stderr). Written from the boot
+    /// thread only.
+    boot_log: PathBuf,
 }
 
 impl BrainLauncher {
@@ -62,6 +67,7 @@ impl BrainLauncher {
             status: Arc::new(Mutex::new(s)),
             llama_child: None,
             brain_child: None,
+            boot_log: PathBuf::new(),
         }
     }
 
@@ -69,12 +75,32 @@ impl BrainLauncher {
         self.status.clone()
     }
 
+    /// Append one timestamped line to boot.log (best-effort; never fails boot).
+    fn blog(&self, msg: &str) {
+        if self.boot_log.as_os_str().is_empty() {
+            return;
+        }
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.boot_log)
+        {
+            let _ = writeln!(f, "[{ts}] {msg}");
+        }
+        eprintln!("[brain] {msg}");
+    }
+
     fn set_error(&self, e: &str) {
         if let Ok(mut s) = self.status.lock() {
             s.last_error = e.to_string();
             s.model_state = "error".to_string();
         }
-        eprintln!("[brain] {e}");
+        self.blog(&format!("ERROR: {e}"));
     }
 
     fn set_model_state(&self, state: &str, downloaded: u64, total: u64) {
@@ -115,7 +141,7 @@ impl BrainLauncher {
     }
 
     /// Download one release part (streamed to disk), verifying its hash.
-    fn download_part(url: &str, dest: &Path, expected_sha: &str, expected_size: u64) -> Result<(), String> {
+    fn download_part(&self, url: &str, dest: &Path, expected_sha: &str, expected_size: u64) -> Result<(), String> {
         if dest.exists() {
             let size = dest.metadata().map(|m| m.len()).unwrap_or(0);
             if size == expected_size {
@@ -129,6 +155,7 @@ impl BrainLauncher {
             let _ = std::fs::remove_file(dest);
         }
         eprintln!("[brain] downloading {url}");
+        self.blog(&format!("downloading part -> {}", dest.display()));
         let resp = ureq::get(url)
             .timeout(Duration::from_secs(3600))
             .call()
@@ -179,19 +206,25 @@ impl BrainLauncher {
         if parts.is_empty() {
             return Err("model manifest has no parts — cannot download".to_string());
         }
+        self.blog(&format!("manifest ok: {} parts, {} total bytes", parts.len(), total));
         std::fs::create_dir_all(models_dir)
             .map_err(|e| format!("cannot create {}: {e}", models_dir.display()))?;
         let mut downloaded: u64 = 0;
         self.set_model_state("downloading", 0, total);
-        for p in parts {
+        let n_parts = parts.len();
+        for (i, p) in parts.iter().enumerate() {
             let pname = p["name"].as_str().ok_or("manifest part: no name")?;
             let purl = p["url"].as_str().ok_or("manifest part: no url")?;
             let psha = p["sha256"].as_str().ok_or("manifest part: no sha256")?;
             let psize = p["size"].as_u64().unwrap_or(0);
             let part_path = models_dir.join(pname);
-            Self::download_part(purl, &part_path, psha, psize)
-                .map_err(|e| format!("{pname}: {e}"))?;
+            self.blog(&format!("part {}/{} start: {pname} ({} bytes)", i + 1, n_parts, psize));
+            if let Err(e) = self.download_part(purl, &part_path, psha, psize) {
+                self.blog(&format!("part {}/{} FAILED: {pname}: {e}", i + 1, n_parts));
+                return Err(format!("{pname}: {e}"));
+            }
             downloaded += psize;
+            self.blog(&format!("part {}/{} done: {pname}", i + 1, n_parts));
             self.set_model_state("downloading", downloaded, total);
         }
 
@@ -272,6 +305,13 @@ impl BrainLauncher {
                 return;
             }
         };
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            self.set_error(&format!("cannot create data dir {}: {e}", data_dir.display()));
+            return;
+        }
+        self.boot_log = data_dir.join("boot.log");
+        self.blog(&format!("boot start; res_dir={} data_dir={}",
+                           res_dir.display(), data_dir.display()));
         let llama_exe = Self::resource(&res_dir, "llama-server.exe");
         let python_exe = Self::resource(&res_dir, "python/python.exe");
         let brain_dir = Self::resource(&res_dir, "brain/genesis_onecode");
@@ -296,6 +336,7 @@ impl BrainLauncher {
                 self.set_error(&format!("missing payload: {label} at {}", p.display()));
                 return;
             }
+            self.blog(&format!("payload ok: {label} at {}", p.display()));
         }
 
         // 1. Local model: download on first boot, verify every boot (W14).
@@ -309,6 +350,7 @@ impl BrainLauncher {
         self.status.lock().unwrap().model_path = model.to_string_lossy().to_string();
 
         // 2. llama-server with full GPU offload.
+        self.blog(&format!("spawning llama-server: {} -m <model>", llama_exe.display()));
         let mut llama = match Command::new(&llama_exe)
             .args([
                 "-m",
@@ -344,10 +386,12 @@ impl BrainLauncher {
             return;
         }
         self.status.lock().unwrap().llama_running = true;
+        self.blog("llama-server healthy");
         eprintln!("[brain] llama-server healthy on 127.0.0.1:{LLAMA_PORT}");
         self.llama_child = Some(llama);
 
         // 3. Brain service on the bundled portable Python.
+        self.blog(&format!("spawning brain service: {} {}", python_exe.display(), service_py.display()));
         let brain = Command::new(&python_exe)
             .arg(&service_py)
             .env("GENESIS_BRAIN_PORT", BRAIN_PORT.to_string())
@@ -373,6 +417,7 @@ impl BrainLauncher {
                     Duration::from_secs(60),
                 ) {
                     self.status.lock().unwrap().brain_running = true;
+                    self.blog("brain service healthy — boot complete");
                     eprintln!("[brain] brain service healthy on 127.0.0.1:{BRAIN_PORT}");
                     self.brain_child = Some(c);
                 } else {

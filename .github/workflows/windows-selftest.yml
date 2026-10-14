@@ -289,6 +289,14 @@ jobs:
           $summary = @{app_alive=(-not $app.HasExited); model_bytes=$modelBytes; model_gb=[math]::Round($modelBytes/1GB,2); llama=$llamaUp; brain=$brainUp}
           Write-Host ("B1 observation: " + ($summary | ConvertTo-Json -Compress))
           $summary | ConvertTo-Json | Out-File -FilePath "$work\firstboot_summary.json" -Encoding utf8
+          $bootLog = Join-Path $env:LOCALAPPDATA "com.genesis.final\boot.log"
+          if (Test-Path $bootLog) {
+            Copy-Item $bootLog "$work\boot.log" -Force
+            Write-Host "--- boot.log (app's own boot trace) ---"
+            Get-Content $bootLog | Write-Host
+          } else {
+            Write-Host "B1 NOTE: no boot.log at $bootLog — the brain boot thread may never have reached data-dir setup"
+          }
 
           if ($app.HasExited) { Write-Error "SELFTEST-RED: app process died during first boot (exit $($app.ExitCode))"; exit 1 }
           if (-not $llamaUp) {
@@ -362,5 +370,6 @@ jobs:
             ${{ runner.temp }}\genesis_selftest\brain_service.log
             ${{ runner.temp }}\genesis_selftest\brain_service.err
             ${{ runner.temp }}\genesis_selftest\stub_llama.log
+            ${{ runner.temp }}\genesis_selftest\boot.log
           retention-days: 30
           if-no-files-found: warn

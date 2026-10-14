@@ -316,7 +316,17 @@ impl BrainLauncher {
         let python_exe = Self::resource(&res_dir, "python/python.exe");
         let brain_dir = Self::resource(&res_dir, "brain/genesis_onecode");
         let service_py = brain_dir.join("service.py");
-        let manifest = brain_dir.join("model_manifest.json");
+        // stage_brain.py copies repo genesis_onecode/ -> resources/brain/genesis_onecode/,
+        // so the committed manifest (genesis_onecode/brain/model_manifest.json)
+        // lands at brain/genesis_onecode/brain/model_manifest.json.
+        let manifest = {
+            let direct = brain_dir.join("model_manifest.json");
+            if direct.exists() {
+                direct
+            } else {
+                brain_dir.join("brain").join("model_manifest.json")
+            }
+        };
         let chrome_exe = Self::resource(&res_dir, "chromium/chrome.exe");
         let models_dir = data_dir.join("models");
 

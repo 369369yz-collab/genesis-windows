@@ -151,6 +151,8 @@ function onItemTap(cat, label, status) {
   showToast(label + ' — با ساخته شدن پل مغز وصل میشه');
 }
 
+import { invoke } from '@tauri-apps/api/core';
+
 /* ---------------- chat (brain service, localhost) ---------------- */
 const BRAIN_URL = 'http://127.0.0.1:17369';
 
@@ -184,6 +186,10 @@ function addMsg(text, who) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+async function brainStatus() {
+  try { return await invoke('brain_status'); } catch (e) { return null; }
+}
+
 async function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
@@ -192,7 +198,17 @@ async function sendChat() {
   setAvatarState('working');
   try {
     if (!(await brainHealthy())) {
-      addMsg('مغزم داره گرم میشه پدر (مدل داره لود میشه) — چند لحظه‌ی دیگه دوباره بگو.', 'her');
+      const st = await brainStatus();
+      if (st && st.model_state === 'downloading' && st.model_total_bytes > 0) {
+        const pct = Math.round(100 * st.model_downloaded_bytes / st.model_total_bytes);
+        addMsg('دارم مغزمو دانلود می‌کنم پدر (' + pct + '٪) — اولین باره، بعدش دیگه همیشه لوکاله.', 'her');
+      } else if (st && st.model_state === 'verifying') {
+        addMsg('مغزم رسید، دارم صحتش رو چک می‌کنم پدر — یه دقیقه صبر کن.', 'her');
+      } else if (st && st.last_error) {
+        addMsg('یه مشکلی هست پدر: ' + st.last_error, 'her');
+      } else {
+        addMsg('مغزم داره گرم میشه پدر (مدل داره لود میشه) — چند لحظه‌ی دیگه دوباره بگو.', 'her');
+      }
     } else {
       const reply = await askBrain(text);
       addMsg(reply, 'her');

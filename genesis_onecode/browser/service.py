@@ -77,7 +77,11 @@ class BrowserService:
         if lease is None:
             raise LeaseError(f"unknown lease {lease_id}")
         ctx = self._browser.new_context(
-            user_data_dir=None,  # persistent profile via storage below
+            # NOTE: playwright's Browser.new_context() has no user_data_dir
+            # parameter (persistent profiles need launch_persistent_context,
+            # wired at the app layer). Passing it raised TypeError and broke
+            # every browser action — fixed after the windows self-test caught
+            # it (2026-10-14).
             accept_downloads=True,
         )
         # Per-owner persistent storage: use the profile dir for state.

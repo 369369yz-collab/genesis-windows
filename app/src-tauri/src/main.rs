@@ -18,6 +18,7 @@ mod preflight;
 mod ram_guard;
 mod sidecar_supervisor;
 mod station;
+mod voice;
 
 use sidecar_supervisor::SidecarSupervisor;
 use std::sync::{Arc, Mutex};
@@ -61,7 +62,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             ram_status,
             preflight_report,
-            brain::brain_status
+            brain::brain_status,
+            voice::voice_status,
+            voice::voice_transcribe
         ])
         .setup(|app| {
             // --- W1 RAM budget guard: hard cap first, then the boot check.
@@ -106,6 +109,25 @@ fn main() {
             // registers its backends here; the reaper unloads 60 s-idle ones.
             let supervisor = Arc::new(Mutex::new(SidecarSupervisor::new()));
             app.manage(supervisor.clone());
+            // --- Whisper STT backend: real local transcription engine.
+            // Binary + model live under resources/whisper/; if missing, the
+            // voice_status command says so honestly and the mic stays UI-only.
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let whisper = Arc::new(Mutex::new(voice::WhisperBackend::new(resource_dir)));
+            app.manage(whisper.clone());
+            if let Ok(mut sup) = supervisor.lock() {
+                // Probe once at boot so voice_status is truthful from the start.
+                let mut w = whisper.lock().unwrap();
+                match w.spawn() {
+                    Ok(()) => eprintln!("[voice] whisper engine ready"),
+                    Err(e) => eprintln!("[voice] whisper unavailable: {e}"),
+                }
+                drop(w);
+                sup.register(Box::new(voice::WhisperSlot::new(whisper.clone())));
+            }
             sidecar_supervisor::spawn_reaper(supervisor.clone());
             if let Ok(sup) = supervisor.lock() {
                 eprintln!("[sidecar] supervisor live — slots: {:?}", sup.status());

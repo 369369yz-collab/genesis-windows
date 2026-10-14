@@ -80,20 +80,78 @@ function sendChat() {
 $("sendBtn").onclick = sendChat;
 chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 
-/* ---------- voice input (local STT hook) ---------- */
+/* ---------- voice input: local whisper STT, zero cloud ---------- */
+var invoke = null;
+try {
+  if (window.__TAURI__) {
+    const core = await import("@tauri-apps/api/core");
+    invoke = core.invoke;
+  }
+} catch (e) { /* plain-browser test env: no Tauri */ }
+
+let audioCtx = null, audioStream = null, audioProc = null, audioChunks = [];
+
+function encodeWav16(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); wstr(36, "data");
+  v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Uint8Array(buf);
+}
+
+async function voiceEngineReady() {
+  if (!invoke) return { installed: false, testEnv: true };
+  try { return await invoke("voice_status"); }
+  catch (e) { return { installed: false, error: String(e) }; }
+}
+
 let recording = false;
-$("micBtn").onclick = () => {
-  recording = !recording;
-  $("micBtn").classList.toggle("recording", recording);
-  if (recording) {
+$("micBtn").onclick = async () => {
+  if (!recording) {
+    const st = await voiceEngineReady();
+    if (!st.installed && !st.testEnv) {
+      showToast("موتور ویس هنوز نصب نیست — متن بنویس پدر");
+      return;
+    }
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      showToast("دسترسی به میکروفون داده نشد");
+      return;
+    }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    const src = audioCtx.createMediaStreamSource(audioStream);
+    audioProc = audioCtx.createScriptProcessor(4096, 1, 1);
+    audioChunks = [];
+    audioProc.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(audioProc); audioProc.connect(audioCtx.destination);
+    recording = true;
+    $("micBtn").classList.add("recording");
     showToast("در حال گوش دادن... دوباره بزن تا تموم بشه");
-    // Tauri backend hook: window.__genesis_voice_start()
-    if (window.__genesis_voice_start) window.__genesis_voice_start();
   } else {
-    showToast("ویس دریافت شد");
-    if (window.__genesis_voice_stop) {
-      const text = window.__genesis_voice_stop();
-      if (text) { chatInput.value = text; sendChat(); }
+    recording = false;
+    $("micBtn").classList.remove("recording");
+    const flat = audioChunks.reduce((a, c) => { const n = new Float32Array(a.length + c.length); n.set(a); n.set(c, a.length); return n; }, new Float32Array(0));
+    try { audioProc.disconnect(); } catch {}
+    try { audioCtx.close(); } catch {}
+    try { audioStream.getTracks().forEach(t => t.stop()); } catch {}
+    if (!invoke) { showToast("ویس دریافت شد"); return; }
+    showToast("در حال تبدیل گفتار به متن...");
+    try {
+      const wav = encodeWav16(flat, 16000);
+      const text = await invoke("voice_transcribe", { wavBytes: Array.from(wav) });
+      if (text && text.trim()) { chatInput.value = text.trim(); sendChat(); }
+      else showToast("چیزی شنیده نشد — دوباره بگو پدر");
+    } catch (e) {
+      showToast("خطا در تبدیل ویس: " + String(e).slice(0, 80));
     }
   }
 };

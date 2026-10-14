@@ -59,6 +59,7 @@ fn preflight_report() -> Vec<preflight::PreflightCheck> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ram_status,
             preflight_report,

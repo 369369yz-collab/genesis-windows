@@ -47,5 +47,15 @@
   },
   "identifier": "com.genesis.final",
   "productName": "GENESIS Final",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "endpoints": [
+        "https://github.com/369369yz-collab/genesis-windows/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwNEQ3RUI5Rjk3Nzg5QkQKUldTOWlYZjV1WDVOa0Vzdm1yL0VTd3lOOFlVUHIxQmE0dG51RW8vazd4L3Y1WHp6UjFNUmJid2gK"
+    }
+  }
 }

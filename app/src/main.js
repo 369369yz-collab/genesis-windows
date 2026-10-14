@@ -162,10 +162,61 @@ document.querySelectorAll("#pills .pill").forEach(p => {
     document.querySelectorAll("#pills .pill").forEach(x => x.classList.remove("active"));
     p.classList.add("active");
     const v = VIEWS[p.dataset.view];
+    if (p.dataset.view === "settings") { openSettings(); return; }
     if (v.body) { $("panelTitle").textContent = v.title; $("panelBody").textContent = v.body; $("panel").classList.remove("hidden"); }
   };
 });
 $("panelClose").onclick = () => $("panel").classList.add("hidden");
+
+/* ---------- settings + approval-first updater ---------- */
+var updaterApi = null;
+async function loadUpdater() {
+  if (updaterApi || !invoke) return updaterApi;
+  try {
+    const u = await import("@tauri-apps/plugin-updater");
+    const pr = await import("@tauri-apps/plugin-process");
+    updaterApi = { check: u.check, relaunch: pr.relaunch };
+  } catch (e) { updaterApi = null; }
+  return updaterApi;
+}
+function openSettings() {
+  $("panelTitle").textContent = "تنظیمات";
+  $("panelBody").innerHTML =
+    `<div class="set-row"><b>تم</b><span>دکمه ◐ بالای صفحه — ۱۳ تم، ذخیره خودکار</span></div>
+     <div class="set-row"><b>ویس</b><span id="voiceState">در حال بررسی...</span></div>
+     <div class="set-row"><b>آپدیت</b><span id="updState">—</span></div>
+     <button class="map-close" id="updCheck" style="margin-top:8px">بررسی آپدیت</button>
+     <div id="updAction" style="margin-top:10px"></div>`;
+  $("panel").classList.remove("hidden");
+  voiceEngineReady().then(st => {
+    $("voiceState").textContent = st.installed ? "موتور ویس آماده‌ست" : "موتور ویس نصب نیست";
+  });
+  $("updCheck").onclick = async () => {
+    const api = await loadUpdater();
+    if (!api) { $("updState").textContent = "آپدیتر در این محیط در دسترس نیست"; return; }
+    $("updState").textContent = "در حال بررسی...";
+    $("updAction").innerHTML = "";
+    let update = null;
+    try { update = await api.check(); }
+    catch (e) { $("updState").textContent = "خطا در بررسی: " + String(e).slice(0, 90); return; }
+    if (!update) { $("updState").textContent = "جدیدترین نسخه نصب است"; return; }
+    $("updState").textContent = "نسخه " + update.version + " موجود است";
+    $("updAction").innerHTML =
+      `<div style="margin-bottom:8px;font-size:13px">${(update.body || "").slice(0, 200)}</div>
+       <button class="map-close" id="updGo">دانلود و نصب</button>
+       <button class="pill" id="updNo" style="margin-right:8px">فعلاً نه</button>`;
+    $("updNo").onclick = () => { $("updAction").innerHTML = ""; $("updState").textContent = "نصب لغو شد"; };
+    $("updGo").onclick = async () => {
+      $("updState").textContent = "در حال دانلود...";
+      $("updAction").innerHTML = "";
+      try {
+        await update.downloadAndInstall();
+        $("updState").textContent = "نصب شد — در حال راه‌اندازی مجدد...";
+        await api.relaunch();
+      } catch (e) { $("updState").textContent = "خطا در نصب: " + String(e).slice(0, 90); }
+    };
+  };
+}
 
 /* ---------- greeting ---------- */
 addBubble("سلام پدر، چطور می‌تونم کمکت کنم؟", "her");

@@ -1,0 +1,348 @@
+name: GENESIS Full — Windows self-test (virtual Windows)
+
+# YZ order (WINDOWS-VM-TEST LAW): run the final installer on a virtual
+# Windows machine and personally exercise it before any delivery claim.
+# This workflow installs the LATEST successful build-windows artifact on
+# windows-latest, silently, then runs two honest stages:
+#   A) installer integrity + standalone brain-service API contract
+#      (stub llama proves the /chat plumbing; labeled STUB, never real)
+#   B) real first-boot session: launches the actual app, time-boxed model
+#      download observation, llama/brain health, real /chat if the model
+#      becomes usable.
+# Fail-closed: any red step fails the job. Every boundary (e.g. no GPU on
+# the runner) is logged explicitly — never faked, never "final".
+on:
+  workflow_run:
+    workflows: ["GENESIS Full — Windows build"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  selftest:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Resolve source build run
+        id: src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_run") {
+            $runId = "${{ github.event.workflow_run.id }}"
+          } else {
+            $runId = gh api "repos/${{ github.repository }}/actions/workflows/build-windows.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id'
+          }
+          if (-not $runId) { Write-Error "SELFTEST-RED: no successful build-windows run found"; exit 1 }
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "source build run: $runId"
+
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: GENESIS-Setup-Full-windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.src.outputs.run_id }}
+          path: installer_dl
+
+      - name: A1 verify installer SHA-256 (fail-closed)
+        run: |
+          $exe = Get-ChildItem installer_dl\*.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "SELFTEST-RED: no installer exe in artifact"; exit 1 }
+          $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          Write-Host "installer: $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB)"
+          Write-Host "actual   : $actual"
+          $shaFile = Get-ChildItem installer_dl\*sha256* | Select-Object -First 1
+          if ($shaFile) {
+            $expected = (Get-Content $shaFile.FullName -Raw).Split()[0].Trim().ToUpper()
+            Write-Host "expected : $expected"
+            if ($actual -ne $expected) { Write-Error "SELFTEST-RED: SHA-256 MISMATCH"; exit 1 }
+            Write-Host "A1 PASS: SHA-256 match"
+          } else {
+            Write-Host "A1 BOUNDARY: no sha256 file in artifact — hash recorded only: $actual"
+          }
+          "INSTALLER_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: A2 silent install (/S) + assert install dir
+        run: |
+          Write-Host "silent install: $env:INSTALLER_EXE /S"
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
+          $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          if (-not $p.HasExited) {
+            try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Write-Error "SELFTEST-RED: installer process did not exit in 600s"; exit 1
+          }
+          Write-Host "installer exited with code $($p.ExitCode)"
+          $dir = "C:\Program Files\GENESIS Final"
+          $ok = $false
+          for ($i = 0; $i -lt 18; $i++) {
+            if (Test-Path (Join-Path $dir "GENESIS Final.exe")) { $ok = $true; break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $ok) {
+            Write-Host "C:\Program Files contents:"
+            Get-ChildItem "C:\Program Files" -Directory | Select-Object Name | Write-Host
+            Write-Error "SELFTEST-RED: installed exe missing after silent install"; exit 1
+          }
+          $un = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+            Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*GENESIS*" }
+          if ($un) { Write-Host "uninstall entry: $($un.DisplayName)" } else { Write-Host "NOTE: no uninstall registry entry found" }
+          Write-Host "A2 PASS: installed at $dir"
+          "INSTALL_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: A3 inventory installed resources (honest layout log)
+        run: |
+          $dir = $env:INSTALL_DIR
+          Write-Host "== top-level install dir =="
+          Get-ChildItem $dir | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}} | Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "== key payload search (layout-agnostic) =="
+          foreach ($pat in @("service.py","llama-server.exe","python.exe","chrome.exe","model_manifest.json","memory.py")) {
+            $f = Get-ChildItem $dir -Recurse -File -Filter $pat -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($f) { Write-Host ("FOUND {0} -> {1}" -f $pat, $f.FullName.Substring($dir.Length+1)) } else { Write-Host "MISSING $pat" }
+          }
+          $svc = Get-ChildItem $dir -Recurse -File -Filter "service.py" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*genesis_onecode*" } | Select-Object -First 1
+          if (-not $svc) { Write-Error "SELFTEST-RED: genesis_onecode/service.py not found in install"; exit 1 }
+          $py = Get-ChildItem $dir -Recurse -File -Filter "python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $py) { Write-Error "SELFTEST-RED: portable python.exe not found in install"; exit 1 }
+          $chrome = Get-ChildItem $dir -Recurse -File -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $chrome) { Write-Host "A3 BOUNDARY: chrome.exe not found in install — browser steps may 503 honestly" }
+          "BRAIN_SERVICE=$($svc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PORTABLE_PY=$($py.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($chrome) { "CHROME_EXE=$($chrome.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append }
+          Write-Host "A3 PASS: brain service + portable python present"
+
+      - name: A4 brain-service API contract (stub llama, honest labels)
+        run: |
+          $work = "$env:TEMP\genesis_selftest"; New-Item -ItemType Directory -Force $work | Out-Null
+          $dataDir = "$work\data"; New-Item -ItemType Directory -Force $dataDir | Out-Null
+
+          $stub = @'
+          import json
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          class H(BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def _j(self, o, code=200):
+                  b = json.dumps(o).encode()
+                  self.send_response(code); self.send_header("Content-Type","application/json")
+                  self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+              def do_GET(self):
+                  if self.path == "/health": self._j({"status":"ok"})
+                  else: self._j({"error":"not found"},404)
+              def do_POST(self):
+                  n = int(self.headers.get("Content-Length","0") or 0)
+                  try: body = json.loads(self.rfile.read(n) or b"{}")
+                  except Exception: body = {}
+                  if self.path == "/v1/chat/completions":
+                      msgs = body.get("messages", [])
+                      msg = msgs[-1].get("content","") if msgs else ""
+                      self._j({"choices":[{"message":{"content":"[STUB-LLAMA] reply to: "+msg[:80]}}]})
+                  else: self._j({"error":"not found"},404)
+          ThreadingHTTPServer(("127.0.0.1",8080), H).serve_forever()
+          '@
+          $stub | Out-File -FilePath "$work\stub_llama.py" -Encoding utf8
+
+          $test = @'
+          import json, sys, urllib.request, urllib.error
+          BASE = "http://127.0.0.1:17369"
+          results = []
+          def call(method, path, body=None, timeout=60):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(BASE+path, data=data,
+                  headers={"Content-Type":"application/json"}, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as r:
+                      return r.status, json.loads(r.read().decode() or "{}")
+              except urllib.error.HTTPError as e:
+                  try: payload = json.loads(e.read().decode() or "{}")
+                  except Exception: payload = {}
+                  return e.code, payload
+          def check(name, cond, detail=""):
+              results.append({"name":name, "pass":bool(cond), "detail":str(detail)[:400]})
+              print(("PASS " if cond else "FAIL ") + name + (" | "+str(detail)[:200] if detail else ""))
+          # 1 health
+          s,b = call("GET","/health"); check("health", s==200 and b.get("ok") is True, b)
+          # 2 status
+          s,b = call("GET","/status"); check("status", s==200 and b.get("ok") is True, {k:b.get(k) for k in ("llama_alive","chromium_present")})
+          # 3 chat via STUB llama (plumbing only — NOT the real model)
+          s,b = call("POST","/chat",{"message":"سلام، خودت را معرفی کن"})
+          check("chat_stub_plumbing", s==200 and b.get("ok") is True and "[STUB-LLAMA]" in b.get("reply",""), b.get("reply","")[:120])
+          # 4 memory remember/recall/forget
+          s,b = call("POST","/memory/remember",{"key":"selftest","value":"runner-ok"})
+          check("memory_remember", s==200 and b.get("ok") is True, b)
+          s,b = call("GET","/memory/facts"); check("memory_facts", s==200 and b.get("facts",{}).get("selftest")=="runner-ok", b)
+          s,b = call("POST","/chat",{"message":"یادت هست؟"})  # exercises sqlite history path
+          check("chat_with_history", s==200 and b.get("ok") is True, b.get("reply","")[:120])
+          s,b = call("POST","/memory/forget",{"key":"selftest"})
+          check("memory_forget", s==200 and b.get("forgotten") is True, b)
+          s,b = call("GET","/memory/facts"); check("memory_forgotten", s==200 and "selftest" not in b.get("facts",{}), b)
+          # 5 browser governor smoke (real page through bundled Chromium)
+          s,b = call("GET","/browser/status"); check("browser_status", s==200 and b.get("ok") is True, {k:b.get(k) for k in ("chromium_present",)})
+          lease = None
+          s,b = call("POST","/browser/lease",{"owner":"selftest","purpose":"smoke"})
+          if s==200 and b.get("ok"): lease = b.get("lease_id")
+          check("browser_lease", bool(lease), b)
+          if lease:
+              s,b = call("POST","/browser/open",{"lease_id":lease,"url":"https://example.com"}, timeout=90)
+              check("browser_open_example", s==200 and b.get("ok") is True, b.get("detail",""))
+              s,b = call("POST","/browser/read",{"lease_id":lease}, timeout=90)
+              txt = (b.get("data") or "")
+              if isinstance(txt, dict): txt = json.dumps(txt)
+              check("browser_read_text", s==200 and "Example Domain" in str(txt), str(txt)[:160])
+              s,b = call("POST","/browser/close",{"lease_id":lease})
+              check("browser_close", s==200 and b.get("ok") is True, b)
+          # 6 contract: bad lease must NOT fake ok
+          s,b = call("POST","/browser/open",{"lease_id":"br-nope","url":"https://example.com"})
+          check("browser_badlease_honest", b.get("ok") is not True, (s,b))
+          fails = [r for r in results if not r["pass"]]
+          open(r"$work\test_results.json".replace("$work", r"__WORK__"),"w",encoding="utf-8").write(json.dumps({"results":results,"failed":[r["name"] for r in fails]}, ensure_ascii=False, indent=1))
+          print("TOTAL: %d passed, %d failed" % (len(results)-len(fails), len(fails)))
+          sys.exit(1 if fails else 0)
+          '@
+          $test = $test.Replace("__WORK__", $work.Replace("\","\\"))
+          $test | Out-File -FilePath "$work\test_brain_api.py" -Encoding utf8
+
+          $env:GENESIS_BRAIN_PORT = "17369"
+          $env:GENESIS_LLAMA_URL = "http://127.0.0.1:8080"
+          $env:GENESIS_DATA_DIR = $dataDir
+          $env:PYTHONUTF8 = "1"
+          if ($env:CHROME_EXE) { $env:GENESIS_CHROMIUM_EXE = $env:CHROME_EXE }
+
+          $stubP = Start-Process python -ArgumentList "`"$work\stub_llama.py`"" -PassThru -RedirectStandardOutput "$work\stub_llama.log" -RedirectStandardError "$work\stub_llama.err"
+          $svcP  = Start-Process $env:PORTABLE_PY -ArgumentList "`"$env:BRAIN_SERVICE`"" -PassThru -RedirectStandardOutput "$work\brain_service.log" -RedirectStandardError "$work\brain_service.err"
+          "STUB_PID=$($stubP.Id);SVC_PID=$($svcP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $up = $false
+          for ($i=0; $i -lt 12; $i++) {
+            try { $r = Invoke-RestMethod "http://127.0.0.1:17369/health" -TimeoutSec 5; if ($r.ok) { $up=$true; break } } catch {}
+            Start-Sleep -Seconds 5
+          }
+          if (-not $up) {
+            Write-Host "--- brain_service.log ---"; Get-Content "$work\brain_service.log","$work\brain_service.err" -ErrorAction SilentlyContinue | Write-Host
+            Write-Error "SELFTEST-RED: brain service never became healthy"; exit 1
+          }
+          Write-Host "brain service healthy — running API contract tests"
+          python "$work\test_brain_api.py"
+          $rc = $LASTEXITCODE
+          Write-Host "--- brain_service.log (tail) ---"; Get-Content "$work\brain_service.log" -Tail 30 -ErrorAction SilentlyContinue | Write-Host
+          if ($rc -ne 0) { Write-Error "SELFTEST-RED: brain API contract failed (see test_results.json)"; exit 1 }
+          Write-Host "A4 PASS: brain API contract green (stub llama — plumbing only)"
+
+      - name: A4b stop stage-A services
+        if: always()
+        run: |
+          foreach ($v in @($env:STUB_PID, $env:SVC_PID)) {
+            if ($v) { try { Stop-Process -Id ([int]$v) -Force -ErrorAction SilentlyContinue; Write-Host "stopped pid $v" } catch {} }
+          }
+
+      - name: B1 first-boot session (real app, time-boxed model download)
+        run: |
+          $work = "$env:TEMP\genesis_selftest"
+          $exe = Join-Path $env:INSTALL_DIR "GENESIS Final.exe"
+          $modelsDir = Join-Path $env:LOCALAPPDATA "com.genesis.final\models"
+          $prog = "$work\firstboot_progress.jsonl"
+          function NowIso { (Get-Date).ToUniversalTime().ToString("o") }
+          function DirBytes($p) { if (Test-Path $p) { (Get-ChildItem $p -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum } else { 0 } }
+          function HttpOk($url, $t=5) { try { $r = Invoke-WebRequest $url -TimeoutSec $t -UseBasicParsing; return $r.StatusCode -eq 200 } catch { return $false } }
+
+          Write-Host "launching real app: $exe"
+          $app = Start-Process $exe -PassThru
+          $t0 = Get-Date
+          $budgetMin = 20   # model-download observation window
+          $llamaUp = $false; $brainUp = $false; $modelBytes = 0
+          $deadline = $t0.AddMinutes($budgetMin)
+          while ((Get-Date) -lt $deadline) {
+            $alive = -not $app.HasExited
+            $modelBytes = [long](DirBytes $modelsDir)
+            $llamaUp = HttpOk "http://127.0.0.1:8080/health"
+            $brainUp = HttpOk "http://127.0.0.1:17369/health"
+            $row = @{ts=NowIso; app_alive=$alive; model_bytes=$modelBytes; llama=$llamaUp; brain=$brainUp} | ConvertTo-Json -Compress
+            $row | Out-File -FilePath $prog -Append -Encoding utf8
+            if (-not $alive) { Write-Host "APP PROCESS EXITED during first-boot window"; break }
+            if ($llamaUp -and $brainUp) { Write-Host "llama + brain both healthy — ending observation early"; break }
+            Start-Sleep -Seconds 60
+          }
+          $summary = @{app_alive=(-not $app.HasExited); model_bytes=$modelBytes; model_gb=[math]::Round($modelBytes/1GB,2); llama=$llamaUp; brain=$brainUp}
+          Write-Host ("B1 observation: " + ($summary | ConvertTo-Json -Compress))
+          $summary | ConvertTo-Json | Out-File -FilePath "$work\firstboot_summary.json" -Encoding utf8
+
+          if ($app.HasExited) { Write-Error "SELFTEST-RED: app process died during first boot (exit $($app.ExitCode))"; exit 1 }
+          if (-not $llamaUp) {
+            Write-Host "B1 BOUNDARY: llama-server not healthy in ${budgetMin}min window (model_bytes=$modelBytes). Likely causes: 5GB download still in progress, or no GPU on runner (Vulkan build, --n-gpu-layers 99). Recorded honestly — NOT marked red."
+          } else { Write-Host "B1: llama-server healthy" }
+          if ($brainUp) { Write-Host "B1: brain service healthy (full first-boot path completed)" }
+          else { Write-Host "B1 BOUNDARY: brain /health not up — expected while model/llama are not ready. Recorded honestly." }
+          "APP_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "B1 DONE: app stayed alive for the observation window"
+
+      - name: B2 real chat attempt (only if llama+brain healthy)
+        run: |
+          $work = "$env:TEMP\genesis_selftest"
+          $llama = $false; $brain = $false
+          try { $llama = (Invoke-WebRequest "http://127.0.0.1:8080/health" -TimeoutSec 5 -UseBasicParsing).StatusCode -eq 200 } catch {}
+          try { $brain = (Invoke-WebRequest "http://127.0.0.1:17369/health" -TimeoutSec 5 -UseBasicParsing).StatusCode -eq 200 } catch {}
+          if (-not ($llama -and $brain)) {
+            Write-Host "B2 BOUNDARY: real-model chat skipped — llama=$llama brain=$brain. Genuine inference needs the 5GB model + a GPU; runner has neither guaranteed. Recorded honestly."
+            '{"skipped":true,"reason":"llama_or_brain_not_healthy"}' | Out-File -FilePath "$work\real_chat.json" -Encoding utf8
+            exit 0
+          }
+          $t = Measure-Command {
+            $r = Invoke-RestMethod "http://127.0.0.1:17369/chat" -Method POST -TimeoutSec 300 `
+              -ContentType "application/json; charset=utf-8" `
+              -Body (@{message="سلام پدر، خودت را در یک جمله معرفی کن"} | ConvertTo-Json)
+            $r | ConvertTo-Json -Depth 3 | Out-File -FilePath "$work\real_chat.json" -Encoding utf8
+            Write-Host "REAL MODEL REPLY: $($r.reply)"
+          }
+          Write-Host "real chat latency: $($t.TotalSeconds)s"
+          Write-Host "B2 PASS: genuine local-model inference completed"
+
+      - name: B3 stop app + children
+        if: always()
+        run: |
+          if ($env:APP_PID) {
+            $pid0 = [int]$env:APP_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host "stopped child $($_.Name) ($($_.ProcessId))" } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Write-Host "stopped app pid $pid0" } catch {}
+          }
+          foreach ($n in @("llama-server")) {
+            Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "B3 DONE"
+
+      - name: Verdict summary
+        if: always()
+        run: |
+          $work = "$env:TEMP\genesis_selftest"
+          Write-Host "================ SELFTEST VERDICT ================"
+          if (Test-Path "$work\test_results.json") {
+            $tr = Get-Content "$work\test_results.json" -Raw | ConvertFrom-Json
+            $tr.results | ForEach-Object { Write-Host ("[{0}] {1}" -f ($(if ($_.pass) {"PASS"} else {"FAIL"}), $_.name)) }
+          } else { Write-Host "stage A results file missing" }
+          if (Test-Path "$work\firstboot_summary.json") { Write-Host "first-boot:"; Get-Content "$work\firstboot_summary.json" | Write-Host }
+          if (Test-Path "$work\real_chat.json") { Write-Host "real-chat:"; Get-Content "$work\real_chat.json" -Raw | Write-Host }
+          Write-Host "=================================================="
+          Write-Host "NOTE: this is a TEST run on a virtual Windows machine, not a delivery."
+
+      - name: Upload self-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-selftest-evidence
+          path: |
+            ${{ runner.temp }}\genesis_selftest\test_results.json
+            ${{ runner.temp }}\genesis_selftest\firstboot_progress.jsonl
+            ${{ runner.temp }}\genesis_selftest\firstboot_summary.json
+            ${{ runner.temp }}\genesis_selftest\real_chat.json
+            ${{ runner.temp }}\genesis_selftest\brain_service.log
+            ${{ runner.temp }}\genesis_selftest\brain_service.err
+            ${{ runner.temp }}\genesis_selftest\stub_llama.log
+          retention-days: 30
+          if-no-files-found: warn

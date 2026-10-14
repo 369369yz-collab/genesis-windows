@@ -1,15 +1,20 @@
 //! Brain launcher — starts the local model server + brain service at boot.
 //!
-//! GENESIS Full ships everything inside the installer (Tauri resources):
+//! GENESIS Full ships these inside the installer (Tauri resources):
 //!   resources/llama-server.exe          (llama.cpp Vulkan build, pinned)
-//!   resources/models/Qwen3-8B-Q4_K_M.gguf (pinned SHA-256, re-verified here)
 //!   resources/python/python.exe         (portable CPython, no system Python)
-//!   resources/brain/genesis_onecode/service.py (the brain HTTP service)
+//!   resources/brain/genesis_onecode/    (the brain; incl. model_manifest.json)
 //!   resources/chromium/chrome.exe       (portable Chromium for the governor)
 //!
-//! Boot order: verify model hash (chunked) -> llama-server (GPU offload) ->
-//! wait for /health -> brain service (port 17369). Children are killed on
-//! app exit. All localhost-only.
+//! The 5GB model is NOT in the installer (makensis is 32-bit and cannot
+//! build it). On first boot the launcher downloads the pinned release
+//! parts into the app-local data dir, verifies every part's SHA-256,
+//! assembles, and re-verifies the full pinned SHA-256 (W14). After that
+//! the model is local and the app is fully standalone.
+//!
+//! Boot order: payloads present -> model ensure (download/verify) ->
+//! llama-server (GPU offload) -> wait /health -> brain service (17369).
+//! Children are killed on app exit. All localhost-only.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -22,8 +27,7 @@ use tauri::{AppHandle, Manager};
 
 const LLAMA_PORT: u16 = 8080;
 const BRAIN_PORT: u16 = 17369;
-const MODEL_NAME: &str = "Qwen3-8B-Q4_K_M.gguf";
-/// Pinned SHA-256 of the model (genesis_onecode/brain/pins.json, single source of truth).
+/// Pinned SHA-256 of the model (genesis_onecode/brain/pins.json).
 const MODEL_SHA256: &str =
     "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785";
 /// Full GPU offload: 8B Q4_K_M (~4.9 GiB) fits the RTX 5070 12 GB comfortably.
@@ -35,6 +39,10 @@ pub struct BrainStatus {
     pub brain_running: bool,
     pub model_path: String,
     pub model_verified: bool,
+    /// "idle" | "downloading" | "assembling" | "verifying" | "ready" | "error"
+    pub model_state: String,
+    pub model_downloaded_bytes: u64,
+    pub model_total_bytes: u64,
     pub chromium_path: String,
     pub chromium_present: bool,
     pub last_error: String,
@@ -48,8 +56,10 @@ pub struct BrainLauncher {
 
 impl BrainLauncher {
     pub fn new() -> Self {
+        let mut s = BrainStatus::default();
+        s.model_state = "idle".to_string();
         Self {
-            status: Arc::new(Mutex::new(BrainStatus::default())),
+            status: Arc::new(Mutex::new(s)),
             llama_child: None,
             brain_child: None,
         }
@@ -62,72 +72,161 @@ impl BrainLauncher {
     fn set_error(&self, e: &str) {
         if let Ok(mut s) = self.status.lock() {
             s.last_error = e.to_string();
+            s.model_state = "error".to_string();
         }
         eprintln!("[brain] {e}");
     }
 
-    /// Reassemble the model from its NSIS-safe 512MB parts (shipped as
-    /// `Qwen3-8B-Q4_K_M.gguf.partNN` resources — makensis cannot mmap a
-    /// single 5GB file). Reassembly happens once, into the installed
-    /// resources dir; the pinned SHA-256 check afterwards proves the
-    /// model is byte-identical.
-    fn reassemble_model(model: &Path) -> Result<(), String> {
-        let dir = model.parent().ok_or("model has no parent dir")?;
-        let stem = model.file_name().ok_or("model has no file name")?
-            .to_string_lossy().to_string();
-        let mut parts: Vec<PathBuf> = std::fs::read_dir(dir)
-            .map_err(|e| format!("cannot list models dir: {e}"))?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| {
-                p.file_name()
-                    .map(|n| n.to_string_lossy().starts_with(&format!("{stem}.part")))
-                    .unwrap_or(false)
-            })
-            .collect();
-        if parts.is_empty() {
-            return Err(format!(
-                "model missing and no .part files found in {}", dir.display()));
+    fn set_model_state(&self, state: &str, downloaded: u64, total: u64) {
+        if let Ok(mut s) = self.status.lock() {
+            s.model_state = state.to_string();
+            s.model_downloaded_bytes = downloaded;
+            s.model_total_bytes = total;
         }
-        parts.sort();
-        eprintln!("[brain] reassembling model from {} parts...", parts.len());
-        let tmp = dir.join(format!("{stem}.assembling"));
-        let mut out = std::fs::File::create(&tmp)
-            .map_err(|e| format!("cannot create assembly file: {e}"))?;
-        for part in &parts {
-            let mut f = std::fs::File::open(part)
-                .map_err(|e| format!("cannot open {}: {e}", part.display()))?;
-            std::io::copy(&mut f, &mut out)
-                .map_err(|e| format!("copy failed for {}: {e}", part.display()))?;
-        }
-        drop(out);
-        std::fs::rename(&tmp, model)
-            .map_err(|e| format!("cannot finalize assembled model: {e}"))?;
-        eprintln!("[brain] model reassembled");
-        Ok(())
     }
 
-    /// Chunked SHA-256 re-verification at every boot (W14 boot rule).
-    fn verify_model(path: &Path) -> Result<(), String> {
-        let mut file = std::fs::File::open(path)
-            .map_err(|e| format!("cannot open model: {e}"))?;
+    /// Chunked SHA-256 of a file.
+    fn sha256_file(path: &Path) -> Result<String, String> {
+        let mut file =
+            std::fs::File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
         let mut hasher = Sha256::new();
         let mut buf = [0u8; 8 * 1024 * 1024];
         loop {
             let n = file
                 .read(&mut buf)
-                .map_err(|e| format!("model read error: {e}"))?;
+                .map_err(|e| format!("read error {}: {e}", path.display()))?;
             if n == 0 {
                 break;
             }
             hasher.update(&buf[..n]);
         }
-        let hex = hex::encode(hasher.finalize());
+        Ok(hex::encode(hasher.finalize()))
+    }
+
+    /// W14: the assembled model hash must match the pin, every boot.
+    fn verify_model(path: &Path) -> Result<(), String> {
+        let hex = Self::sha256_file(path)?;
         if hex != MODEL_SHA256 {
             return Err(format!(
                 "model SHA-256 MISMATCH — refusing to load (expected {MODEL_SHA256}, got {hex})"
             ));
         }
         Ok(())
+    }
+
+    /// Download one release part (streamed to disk), verifying its hash.
+    fn download_part(url: &str, dest: &Path, expected_sha: &str, expected_size: u64) -> Result<(), String> {
+        if dest.exists() {
+            let size = dest.metadata().map(|m| m.len()).unwrap_or(0);
+            if size == expected_size {
+                if let Ok(h) = Self::sha256_file(dest) {
+                    if h == expected_sha {
+                        eprintln!("[brain] part cached + verified: {}", dest.display());
+                        return Ok(());
+                    }
+                }
+            }
+            let _ = std::fs::remove_file(dest);
+        }
+        eprintln!("[brain] downloading {url}");
+        let resp = ureq::get(url)
+            .timeout(Duration::from_secs(3600))
+            .call()
+            .map_err(|e| format!("download failed for {url}: {e}"))?;
+        if resp.status() != 200 {
+            return Err(format!("download {url}: HTTP {}", resp.status()));
+        }
+        let mut reader = resp.into_reader();
+        let mut out = std::fs::File::create(dest)
+            .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+        std::io::copy(&mut reader, &mut out)
+            .map_err(|e| format!("write failed {}: {e}", dest.display()))?;
+        drop(out);
+        let actual = Self::sha256_file(dest)?;
+        if actual != expected_sha {
+            let _ = std::fs::remove_file(dest);
+            return Err(format!("part hash mismatch for {url} — deleted, will retry next boot"));
+        }
+        Ok(())
+    }
+
+    /// Ensure the local model: download parts on first boot, assemble,
+    /// verify. Returns the model path.
+    fn ensure_model(
+        &self,
+        manifest_path: &Path,
+        models_dir: &Path,
+    ) -> Result<PathBuf, String> {
+        let raw = std::fs::read_to_string(manifest_path)
+            .map_err(|e| format!("cannot read model manifest {}: {e}", manifest_path.display()))?;
+        let m: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| format!("bad model manifest: {e}"))?;
+        let name = m["assembled_name"].as_str().ok_or("manifest: no assembled_name")?;
+        let total = m["assembled_size"].as_u64().unwrap_or(0);
+        let dest = models_dir.join(name);
+
+        if dest.exists() {
+            self.set_model_state("verifying", 0, total);
+            Self::verify_model(&dest)?;
+            self.set_model_state("ready", total, total);
+            self.status.lock().unwrap().model_verified = true;
+            eprintln!("[brain] local model verified: {}", dest.display());
+            return Ok(dest);
+        }
+
+        // First boot: download the parts.
+        let parts = m["parts"].as_array().ok_or("manifest: no parts")?;
+        if parts.is_empty() {
+            return Err("model manifest has no parts — cannot download".to_string());
+        }
+        std::fs::create_dir_all(models_dir)
+            .map_err(|e| format!("cannot create {}: {e}", models_dir.display()))?;
+        let mut downloaded: u64 = 0;
+        self.set_model_state("downloading", 0, total);
+        for p in parts {
+            let pname = p["name"].as_str().ok_or("manifest part: no name")?;
+            let purl = p["url"].as_str().ok_or("manifest part: no url")?;
+            let psha = p["sha256"].as_str().ok_or("manifest part: no sha256")?;
+            let psize = p["size"].as_u64().unwrap_or(0);
+            let part_path = models_dir.join(pname);
+            Self::download_part(purl, &part_path, psha, psize)
+                .map_err(|e| format!("{pname}: {e}"))?;
+            downloaded += psize;
+            self.set_model_state("downloading", downloaded, total);
+        }
+
+        // Assemble in manifest order.
+        self.set_model_state("assembling", downloaded, total);
+        eprintln!("[brain] assembling model from {} parts...", parts.len());
+        let tmp = models_dir.join(format!("{name}.assembling"));
+        let mut out = std::fs::File::create(&tmp)
+            .map_err(|e| format!("cannot create assembly file: {e}"))?;
+        for p in parts {
+            let pname = p["name"].as_str().unwrap();
+            let part_path = models_dir.join(pname);
+            let mut f = std::fs::File::open(&part_path)
+                .map_err(|e| format!("cannot open {}: {e}", part_path.display()))?;
+            std::io::copy(&mut f, &mut out)
+                .map_err(|e| format!("assemble copy failed: {e}"))?;
+        }
+        drop(out);
+        self.set_model_state("verifying", downloaded, total);
+        let hex = Self::sha256_file(&tmp)?;
+        if hex != MODEL_SHA256 {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!(
+                "assembled model SHA-256 MISMATCH (expected {MODEL_SHA256}, got {hex}) — deleted"
+            ));
+        }
+        std::fs::rename(&tmp, &dest).map_err(|e| format!("cannot finalize model: {e}"))?;
+        // Parts no longer needed; reclaim ~5GB.
+        for p in parts {
+            let _ = std::fs::remove_file(models_dir.join(p["name"].as_str().unwrap()));
+        }
+        self.set_model_state("ready", total, total);
+        self.status.lock().unwrap().model_verified = true;
+        eprintln!("[brain] model ready: {}", dest.display());
+        Ok(dest)
     }
 
     fn wait_for_health(url: &str, timeout: Duration) -> bool {
@@ -152,18 +251,23 @@ impl BrainLauncher {
                 return;
             }
         };
+        let data_dir: PathBuf = match app.path().app_local_data_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                self.set_error(&format!("app_local_data_dir() failed: {e}"));
+                return;
+            }
+        };
         let llama_exe = res_dir.join("llama-server.exe");
-        let model = res_dir.join("models").join(MODEL_NAME);
         let python_exe = res_dir.join("python").join("python.exe");
-        let service_py = res_dir
-            .join("brain")
-            .join("genesis_onecode")
-            .join("service.py");
+        let brain_dir = res_dir.join("brain").join("genesis_onecode");
+        let service_py = brain_dir.join("service.py");
+        let manifest = brain_dir.join("model_manifest.json");
         let chrome_exe = res_dir.join("chromium").join("chrome.exe");
+        let models_dir = data_dir.join("models");
 
         {
             let mut s = self.status.lock().unwrap();
-            s.model_path = model.to_string_lossy().to_string();
             s.chromium_path = chrome_exe.to_string_lossy().to_string();
             s.chromium_present = chrome_exe.exists();
         }
@@ -172,39 +276,35 @@ impl BrainLauncher {
             ("llama-server.exe", &llama_exe),
             ("python.exe", &python_exe),
             ("service.py", &service_py),
+            ("model_manifest.json", &manifest),
         ] {
             if !p.exists() {
                 self.set_error(&format!("missing payload: {label} at {}", p.display()));
                 return;
             }
         }
-        // The model ships as .partNN files (NSIS-safe); reassemble on first boot.
-        if !model.exists() {
-            if let Err(e) = Self::reassemble_model(&model) {
-                self.set_error(&e);
-                return;
-            }
-        }
 
-        // 1. Re-verify the model hash at boot (W14).
-        match Self::verify_model(&model) {
-            Ok(()) => {
-                self.status.lock().unwrap().model_verified = true;
-                eprintln!("[brain] model SHA-256 verified");
-            }
+        // 1. Local model: download on first boot, verify every boot (W14).
+        let model = match self.ensure_model(&manifest, &models_dir) {
+            Ok(m) => m,
             Err(e) => {
                 self.set_error(&e);
                 return;
             }
-        }
+        };
+        self.status.lock().unwrap().model_path = model.to_string_lossy().to_string();
 
         // 2. llama-server with full GPU offload.
         let mut llama = match Command::new(&llama_exe)
             .args([
-                "-m", &model.to_string_lossy(),
-                "--port", &LLAMA_PORT.to_string(),
-                "--n-gpu-layers", N_GPU_LAYERS,
-                "--host", "127.0.0.1",
+                "-m",
+                &model.to_string_lossy(),
+                "--port",
+                &LLAMA_PORT.to_string(),
+                "--n-gpu-layers",
+                N_GPU_LAYERS,
+                "--host",
+                "127.0.0.1",
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -216,7 +316,6 @@ impl BrainLauncher {
                 return;
             }
         };
-        // If it dies instantly, surface the failure instead of hanging.
         std::thread::sleep(Duration::from_secs(3));
         if let Ok(Some(code)) = llama.try_wait() {
             self.set_error(&format!("llama-server exited immediately (code {code})"));
@@ -224,7 +323,7 @@ impl BrainLauncher {
         }
         if !Self::wait_for_health(
             &format!("http://127.0.0.1:{LLAMA_PORT}/health"),
-            Duration::from_secs(120),
+            Duration::from_secs(180),
         ) {
             self.set_error("llama-server never became healthy");
             let _ = llama.kill();

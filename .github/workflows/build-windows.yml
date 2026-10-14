@@ -52,14 +52,14 @@ jobs:
       - name: Fetch portable Chromium (pinned Playwright)
         run: python installer/fetch_chromium.py
 
-      - name: Fetch local model + llama-server (pinned SHA-256)
+      - name: Fetch llama-server (pinned, Vulkan)
+        env:
+          GENESIS_SKIP_MODEL: "1"
         run: python installer/fetch_model.py
 
       - name: Fetch portable Python (pinned, hash-verified)
         run: python installer/fetch_python.py
 
-      - name: Split model into NSIS-safe parts (512MB)
-        run: python installer/split_model.py
 
       - name: Stage brain (one-code) into resources
         run: python installer/stage_brain.py

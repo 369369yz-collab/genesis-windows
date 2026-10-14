@@ -40,7 +40,6 @@
     ],
     "resources": [
       "resources/llama-server.exe",
-      "resources/models/",
       "resources/python/",
       "resources/brain/",
       "resources/chromium/"

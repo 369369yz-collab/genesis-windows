@@ -1,0 +1,1 @@
+{"_note":"PLACEHOLDER — replaced by installer/make_model_manifest.py output after the prepare-model workflow runs. Never ship this.","assembled_name":"Qwen3-8B-Q4_K_M.gguf","assembled_sha256":"d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785","assembled_size":5027783488,"parts":[],"release_tag":"brain-model-v1"}

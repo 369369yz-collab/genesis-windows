@@ -84,9 +84,13 @@ def fetch_llama_server(out_dir: Path) -> Path:
 
 
 def main() -> int:
+    import os
     # Payloads ship INSIDE the installer as Tauri resources.
     sidecars = REPO_ROOT / "app" / "src-tauri" / "resources"
-    fetch_model(sidecars / "models")
+    # The 5GB model is NOT bundled (NSIS/makensis 32-bit cannot build it).
+    # It ships as release parts; the app downloads + verifies on first boot.
+    if os.environ.get("GENESIS_SKIP_MODEL", "") != "1":
+        fetch_model(sidecars / "models")
     fetch_llama_server(sidecars)
     print("ALL SIDEEARS READY")
     return 0

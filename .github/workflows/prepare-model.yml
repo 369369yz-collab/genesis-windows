@@ -1,0 +1,68 @@
+# =====================================================================
+# GENESIS Full — model release preparation (manual trigger, free tier)
+#
+# Trigger: workflow_dispatch (Actions tab > Run workflow).
+#
+# Downloads the pinned model, splits it into 512MB NSIS-safe parts,
+# and publishes them as assets on the `brain-model-v1` release.
+# Also uploads model_manifest.json (part hashes + URLs) as a release
+# asset AND prints it for committing to genesis_onecode/brain/.
+#
+# The main build does NOT download the 5GB model. The installed app
+# fetches the parts on first boot (verified per-part + full SHA-256),
+# then runs fully local. Run this workflow again only when the model
+# pin changes.
+#
+# Zero spend. 100% technical English.
+# =====================================================================
+name: GENESIS model release prep
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  MODEL_RELEASE_TAG: brain-model-v1
+
+jobs:
+  prepare-model:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch model + llama-server (pinned SHA-256)
+        run: python installer/fetch_model.py
+
+      - name: Split model into 512MB parts
+        run: python installer/split_model.py
+
+      - name: Generate model manifest
+        run: python installer/make_model_manifest.py
+
+      - name: Create/update model release with parts
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:MODEL_RELEASE_TAG
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "GENESIS brain model v1" `
+              --notes "Pinned Qwen3-8B-Q4_K_M.gguf in 512MB verified parts. SHA-256 in model_manifest.json."
+          }
+          Get-ChildItem app/src-tauri/resources/models/*.part* | ForEach-Object {
+            gh release upload $tag $_.FullName --clobber
+          }
+          gh release upload $tag genesis_onecode/brain/model_manifest.json --clobber
+
+      - name: Print manifest (commit this to the repo)
+        shell: pwsh
+        run: |
+          Get-Content genesis_onecode/brain/model_manifest.json

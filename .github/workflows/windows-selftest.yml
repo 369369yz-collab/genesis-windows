@@ -138,7 +138,7 @@ jobs:
 
       - name: A4 brain-service API contract (stub llama, honest labels)
         run: |
-          $work = "$env:TEMP\genesis_selftest"; New-Item -ItemType Directory -Force $work | Out-Null
+          $work = "$env:RUNNER_TEMP\genesis_selftest"; New-Item -ItemType Directory -Force $work | Out-Null
           $dataDir = "$work\data"; New-Item -ItemType Directory -Force $dataDir | Out-Null
 
           $stub = @'
@@ -208,13 +208,13 @@ jobs:
           check("browser_lease", bool(lease), b)
           if lease:
               s,b = call("POST","/browser/open",{"lease_id":lease,"url":"https://example.com"}, timeout=90)
-              check("browser_open_example", s==200 and b.get("ok") is True, b.get("detail",""))
+              check("browser_open_example", s==200 and b.get("ok") is True, (s,b))
               s,b = call("POST","/browser/read",{"lease_id":lease}, timeout=90)
               txt = (b.get("data") or "")
               if isinstance(txt, dict): txt = json.dumps(txt)
-              check("browser_read_text", s==200 and "Example Domain" in str(txt), str(txt)[:160])
+              check("browser_read_text", s==200 and "Example Domain" in str(txt), (s,str(txt)[:160]))
               s,b = call("POST","/browser/close",{"lease_id":lease})
-              check("browser_close", s==200 and b.get("ok") is True, b)
+              check("browser_close", s==200 and b.get("ok") is True, (s,b))
           # 6 contract: bad lease must NOT fake ok
           s,b = call("POST","/browser/open",{"lease_id":"br-nope","url":"https://example.com"})
           check("browser_badlease_honest", b.get("ok") is not True, (s,b))
@@ -261,7 +261,7 @@ jobs:
 
       - name: B1 first-boot session (real app, time-boxed model download)
         run: |
-          $work = "$env:TEMP\genesis_selftest"
+          $work = "$env:RUNNER_TEMP\genesis_selftest"
           $exe = $env:MAIN_EXE
           $modelsDir = Join-Path $env:LOCALAPPDATA "com.genesis.final\models"
           $prog = "$work\firstboot_progress.jsonl"
@@ -301,7 +301,7 @@ jobs:
 
       - name: B2 real chat attempt (only if llama+brain healthy)
         run: |
-          $work = "$env:TEMP\genesis_selftest"
+          $work = "$env:RUNNER_TEMP\genesis_selftest"
           $llama = $false; $brain = $false
           try { $llama = (Invoke-WebRequest "http://127.0.0.1:8080/health" -TimeoutSec 5 -UseBasicParsing).StatusCode -eq 200 } catch {}
           try { $brain = (Invoke-WebRequest "http://127.0.0.1:17369/health" -TimeoutSec 5 -UseBasicParsing).StatusCode -eq 200 } catch {}
@@ -338,7 +338,7 @@ jobs:
       - name: Verdict summary
         if: always()
         run: |
-          $work = "$env:TEMP\genesis_selftest"
+          $work = "$env:RUNNER_TEMP\genesis_selftest"
           Write-Host "================ SELFTEST VERDICT ================"
           if (Test-Path "$work\test_results.json") {
             $tr = Get-Content "$work\test_results.json" -Raw | ConvertFrom-Json

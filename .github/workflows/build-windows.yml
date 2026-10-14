@@ -29,17 +29,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Python unit tests (one-code: kernel, veins, browser)
+      - name: "Python unit tests (one-code kernel veins browser)"
         run: |
-          python -m unittest discover -s genesis_onecode\kernel\tests -v
-          python -m unittest discover -s genesis_onecode\veins\tests -v
-          python genesis_onecode\browser\tests\test_governor.py
+          python -m unittest discover -s genesis_onecode/kernel/tests -v
+          python -m unittest discover -s genesis_onecode/veins/tests -v
+          python genesis_onecode/browser/tests/test_governor.py
 
       - name: Restore Tauri icons (binary-safe)
-        run: python installer\make_icons.py
+        run: python installer/make_icons.py
 
       - name: Restore VOID avatar assets (binary-safe)
-        run: python installer\make_avatar.py
+        run: python installer/make_avatar.py
 
       - name: Install frontend deps
         working-directory: app
@@ -50,10 +50,10 @@ jobs:
         run: npm run build
 
       - name: Fetch portable Chromium (pinned Playwright)
-        run: python installer\fetch_chromium.py
+        run: python installer/fetch_chromium.py
 
       - name: Fetch local model + llama-server (pinned SHA-256)
-        run: python installer\fetch_model.py
+        run: python installer/fetch_model.py
 
       - name: Tauri build (NSIS)
         uses: tauri-apps/tauri-action@v0

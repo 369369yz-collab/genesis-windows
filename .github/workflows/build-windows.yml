@@ -49,6 +49,16 @@ jobs:
         working-directory: app
         run: npm run build
 
+      - name: Frontend bundle gate (NEVER-AGAIN 2026-10-15 — unbundled script shipped a dead UI)
+        working-directory: app
+        shell: pwsh
+        run: |
+          $js = Get-ChildItem dist/assets/*.js -ErrorAction SilentlyContinue
+          if (-not $js) { Write-Error "GATE FAIL: no bundled JS in dist/assets — vite did not bundle the frontend"; exit 1 }
+          $html = Get-Content dist/index.html -Raw
+          if ($html -notmatch '<script[^>]*type="module"[^>]*src="/assets/') { Write-Error "GATE FAIL: dist/index.html does not reference a bundled module script"; exit 1 }
+          Write-Host ("FRONTEND GATE PASS: " + $js.Name)
+
       - name: Fetch portable Chromium (pinned Playwright)
         run: python installer/fetch_chromium.py
 

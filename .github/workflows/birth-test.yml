@@ -1,0 +1,334 @@
+name: GENESIS — Birth Test (capstone on virtual Windows)
+
+# YZ standing law SELF-TEST BEFORE FINAL (2026-10-13): before ANY final Windows
+# version ships, GENESIS herself runs the COMPLETE self-test on virtual Windows.
+# This is the BIRTH TEST: the capstone run on the LOCKED build that already went
+# 13/13 GREEN in windows-selftest.yml. It goes BEYOND the self-test:
+#   - pinned to ONE locked build run (not "latest")
+#   - silent install -> real app launch -> first-boot observation
+#   - deterministic inference smoke (stub llama) on the INSTALLED bytes
+#   - Browser Governor e2e on the installed brain service
+#   - SQLite memory persistence across a SIMULATED RESTART (new vs self-test)
+#   - first-boot model-manifest fetch viability check (new vs self-test)
+#   - every step timestamped into birth_log.md — the birth minutes
+# Fail-closed: any red step fails the job. Boundaries are logged honestly,
+# never faked. This workflow never delivers anything; it only witnesses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Locked build-windows run id to birth-test"
+        required: false
+        default: "38564500525"
+      expected_sha:
+        description: "Expected head SHA of the locked build"
+        required: false
+        default: "1584e2100696ef34a2cfc426bc06cd4ecd299890"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  birthtest:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: B0 resolve locked build + open birth minutes
+        id: b0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $runId = "${{ inputs.build_run_id }}"
+          $expect = "${{ inputs.expected_sha }}".ToLower()
+          $run = gh api "repos/${{ github.repository }}/actions/runs/$runId" --jq '{sha: .head_sha, conclusion: .conclusion, name: .name}'
+          $sha = ($run | ConvertFrom-Json).sha.ToLower()
+          $concl = ($run | ConvertFrom-Json).conclusion
+          if ($sha -ne $expect) { Write-Error "BIRTH-RED: run $runId head SHA $sha != locked $expect"; exit 1 }
+          if ($concl -ne "success") { Write-Error "BIRTH-RED: run $runId conclusion=$concl (not success)"; exit 1 }
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $work = "$env:RUNNER_TEMP\genesis_birth"; New-Item -ItemType Directory -Force $work | Out-Null
+          "BIRTH_WORK=$work" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $log = "$work\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          @(
+            "# GENESIS — Birth Minutes",
+            "",
+            "Locked build run: $runId",
+            "Locked head SHA: $sha",
+            "Workflow: $($env:GITHUB_WORKFLOW) run $($env:GITHUB_RUN_ID)",
+            "Runner: windows-latest ($env:RUNNER_OS)",
+            "Birth started: $(Stamp)",
+            "",
+            "---",
+            ""
+          ) | Out-File -FilePath $log -Encoding utf8
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          Blog "B0" "locked build verified: run $runId, sha $sha, conclusion success. Birth minutes opened."
+
+      - name: B1 download locked installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: GENESIS-Setup-Full-windows
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.b0.outputs.run_id }}
+          path: installer_dl
+
+      - name: B2 installer SHA-256 (fail-closed)
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $exe = Get-ChildItem installer_dl -Recurse -File -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { Blog "B2" "RED: no installer exe in artifact"; Write-Error "BIRTH-RED: no installer exe"; exit 1 }
+          $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          $shaFile = Get-ChildItem installer_dl -Recurse -File -Filter "*sha256*" | Select-Object -First 1
+          if ($shaFile) {
+            $expected = (Get-Content $shaFile.FullName -Raw).Split()[0].Trim().ToUpper()
+            if ($actual -ne $expected) { Blog "B2" "RED: SHA-256 MISMATCH ($actual vs $expected)"; Write-Error "BIRTH-RED: SHA-256 mismatch"; exit 1 }
+            Blog "B2" "PASS: $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB), SHA-256 matches artifact manifest."
+          } else {
+            Blog "B2" "BOUNDARY: no sha256 file in artifact — recorded hash $actual (fail-open on missing manifest, hash pinned in minutes)."
+          }
+          "INSTALLER_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: B3 silent install (/S) + locate app
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
+          $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          if (-not $p.HasExited) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}; Blog "B3" "RED: installer did not exit in 600s"; Write-Error "BIRTH-RED: installer hung"; exit 1 }
+          Blog "B3" "installer exited code $($p.ExitCode)"
+          $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall","HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+          $entry = $null
+          for ($i = 0; $i -lt 12 -and -not $entry; $i++) {
+            foreach ($h in $hives) {
+              $entry = Get-ChildItem $h -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $entry) { Blog "B3" "RED: no GENESIS uninstall registry entry"; Write-Error "BIRTH-RED: install not registered"; exit 1 }
+          $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+          $exePath = $null
+          for ($i = 0; $i -lt 12 -and -not $exePath; $i++) {
+            $exePath = Get-ChildItem $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } | Select-Object -First 1
+            if (-not $exePath) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $exePath) { Blog "B3" "RED: no GENESIS main exe at $dir"; Write-Error "BIRTH-RED: main exe missing"; exit 1 }
+          Blog "B3" "PASS: silent install registered ($($entry.DisplayName)) at $dir; main exe $($exePath.Name)."
+          "INSTALL_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MAIN_EXE=$($exePath.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: B4 inventory installed payload
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $dir = $env:INSTALL_DIR
+          $found = @()
+          foreach ($pat in @("service.py","llama-server.exe","python.exe","chrome.exe","model_manifest.json")) {
+            $f = Get-ChildItem $dir -Recurse -File -Filter $pat -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($f) { $found += "$pat -> $($f.FullName.Substring($dir.Length+1))" } else { $found += "$pat -> MISSING" }
+          }
+          $found | ForEach-Object { Blog "B4" $_ }
+          $svc = Get-ChildItem $dir -Recurse -File -Filter "service.py" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*genesis_onecode*" } | Select-Object -First 1
+          if (-not $svc) { Blog "B4" "RED: genesis_onecode/service.py missing"; Write-Error "BIRTH-RED: brain service missing"; exit 1 }
+          $py = Get-ChildItem $dir -Recurse -File -Filter "python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $py) { Blog "B4" "RED: portable python.exe missing"; Write-Error "BIRTH-RED: portable python missing"; exit 1 }
+          $chrome = Get-ChildItem $dir -Recurse -File -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($chrome) { "CHROME_EXE=$($chrome.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append; Blog "B4" "portable Chromium present" }
+          else { Blog "B4" "BOUNDARY: chrome.exe not bundled — browser steps may 503 honestly" }
+          "BRAIN_SERVICE=$($svc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PORTABLE_PY=$($py.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Blog "B4" "PASS: brain service + portable python present."
+
+      - name: B5 real app launch + first-boot observation
+        run: |
+          $work = $env:BIRTH_WORK; $log = "$work\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          function HttpOk($url, $t=5) { try { return (Invoke-WebRequest $url -TimeoutSec $t -UseBasicParsing).StatusCode -eq 200 } catch { return $false } }
+          Blog "B5" "launching real app: $env:MAIN_EXE"
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "APP_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $brainUp = $false; $deadline = (Get-Date).AddMinutes(8)
+          while ((Get-Date) -lt $deadline) {
+            if ($app.HasExited) { break }
+            if (HttpOk "http://127.0.0.1:17369/health") { $brainUp = $true; break }
+            Start-Sleep -Seconds 15
+          }
+          $bootLog = Join-Path $env:LOCALAPPDATA "com.genesis.final\boot.log"
+          if (Test-Path $bootLog) { Copy-Item $bootLog "$work\boot.log" -Force; Blog "B5" "app boot.log captured ($((Get-Item $bootLog).Length) bytes)" }
+          else { Blog "B5" "BOUNDARY: no boot.log at $bootLog" }
+          if ($app.HasExited) { Blog "B5" "RED: app process died during first boot (exit $($app.ExitCode))"; Write-Error "BIRTH-RED: app died on first boot"; exit 1 }
+          if ($brainUp) { Blog "B5" "PASS: app stayed alive; its brain service reached /health within the window." }
+          else { Blog "B5" "BOUNDARY: app alive but brain /health not up in 8 min (model/llama not ready — expected on CPU runner). Recorded honestly." }
+
+      - name: B5b app-brain chat attempt (honest boundary)
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          try {
+            $r = Invoke-RestMethod "http://127.0.0.1:17369/chat" -Method POST -TimeoutSec 60 -ContentType "application/json; charset=utf-8" -Body (@{message="birth test ping"} | ConvertTo-Json)
+            Blog "B5b" "app-brain /chat answered: $($r.reply)"
+          } catch {
+            Blog "B5b" "BOUNDARY: app-brain /chat not answerable without a live llama (no 5GB model/GPU on runner). Expected; not red. Error: $($_.Exception.Message)"
+          }
+
+      - name: B5c stop app before deterministic stage
+        if: always()
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          if ($env:APP_PID) {
+            $pid0 = [int]$env:APP_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Blog "B5c" "app stopped" } catch {}
+          }
+          Get-Process -Name "llama-server" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+      - name: B6 deterministic inference smoke (stub llama, installed bytes)
+        run: |
+          $work = $env:BIRTH_WORK; $log = "$work\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $dataDir = "$work\data"; New-Item -ItemType Directory -Force $dataDir | Out-Null
+          $stub = @'
+          import json
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          class H(BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def _j(self, o, code=200):
+                  b = json.dumps(o).encode()
+                  self.send_response(code); self.send_header("Content-Type","application/json")
+                  self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+              def do_GET(self):
+                  if self.path == "/health": self._j({"status":"ok"})
+                  else: self._j({"error":"not found"},404)
+              def do_POST(self):
+                  n = int(self.headers.get("Content-Length","0") or 0)
+                  try: body = json.loads(self.rfile.read(n) or b"{}")
+                  except Exception: body = {}
+                  if self.path == "/v1/chat/completions":
+                      msgs = body.get("messages", [])
+                      msg = msgs[-1].get("content","") if msgs else ""
+                      self._j({"choices":[{"message":{"content":"[STUB-LLAMA] birth reply to: "+msg[:80]}}]})
+                  else: self._j({"error":"not found"},404)
+          ThreadingHTTPServer(("127.0.0.1",8080), H).serve_forever()
+          '@
+          $stub | Out-File -FilePath "$work\stub_llama.py" -Encoding utf8
+          $env:GENESIS_BRAIN_PORT = "17369"
+          $env:GENESIS_LLAMA_URL = "http://127.0.0.1:8080"
+          $env:GENESIS_DATA_DIR = $dataDir
+          $env:PYTHONUTF8 = "1"
+          if ($env:CHROME_EXE) { $env:GENESIS_CHROMIUM_EXE = $env:CHROME_EXE }
+          $stubP = Start-Process python -ArgumentList "`"$work\stub_llama.py`"" -PassThru
+          $svcP = Start-Process $env:PORTABLE_PY -ArgumentList "`"$env:BRAIN_SERVICE`"" -PassThru
+          "STUB_PID=$($stubP.Id);SVC_PID=$($svcP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $up = $false
+          for ($i=0; $i -lt 12; $i++) {
+            try { $r = Invoke-RestMethod "http://127.0.0.1:17369/health" -TimeoutSec 5; if ($r.ok) { $up=$true; break } } catch {}
+            Start-Sleep -Seconds 5
+          }
+          if (-not $up) { Blog "B6" "RED: installed brain service never healthy"; Write-Error "BIRTH-RED: brain service failed"; exit 1 }
+          $r = Invoke-RestMethod "http://127.0.0.1:17369/chat" -Method POST -TimeoutSec 120 -ContentType "application/json; charset=utf-8" -Body (@{message="birth test: introduce yourself in one sentence"} | ConvertTo-Json)
+          if (-not $r.ok -or $r.reply -notlike "*[STUB-LLAMA]*") { Blog "B6" "RED: inference smoke failed ($($r | ConvertTo-Json -Compress))"; Write-Error "BIRTH-RED: inference smoke failed"; exit 1 }
+          Blog "B6" "PASS: deterministic inference smoke on installed bytes — reply: $($r.reply)"
+
+      - name: B7 Browser Governor e2e (installed brain)
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $B = "http://127.0.0.1:17369"
+          $st = Invoke-RestMethod "$B/browser/status" -TimeoutSec 30
+          if (-not $st.ok) { Blog "B7" "RED: /browser/status not ok"; Write-Error "BIRTH-RED: browser status"; exit 1 }
+          Blog "B7" "browser/status ok (chromium_present=$($st.chromium_present))"
+          $lease = (Invoke-RestMethod "$B/browser/lease" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{owner="birthtest";purpose="e2e"} | ConvertTo-Json)).lease_id
+          if (-not $lease) { Blog "B7" "RED: lease not granted"; Write-Error "BIRTH-RED: browser lease"; exit 1 }
+          $op = Invoke-RestMethod "$B/browser/open" -Method POST -TimeoutSec 90 -ContentType "application/json" -Body (@{lease_id=$lease;url="https://example.com"} | ConvertTo-Json)
+          if (-not $op.ok) { Blog "B7" "RED: browser open failed ($($op | ConvertTo-Json -Compress))"; Write-Error "BIRTH-RED: browser open"; exit 1 }
+          $rd = Invoke-RestMethod "$B/browser/read" -Method POST -TimeoutSec 90 -ContentType "application/json" -Body (@{lease_id=$lease} | ConvertTo-Json)
+          $txt = $rd.data; if ($txt -is [hashtable]) { $txt = ($txt | ConvertTo-Json) }
+          if ("$txt" -notlike "*Example Domain*") { Blog "B7" "RED: browser read text mismatch"; Write-Error "BIRTH-RED: browser read"; exit 1 }
+          $cl = Invoke-RestMethod "$B/browser/close" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{lease_id=$lease} | ConvertTo-Json)
+          if (-not $cl.ok) { Blog "B7" "RED: browser close failed"; Write-Error "BIRTH-RED: browser close"; exit 1 }
+          $bad = Invoke-RestMethod "$B/browser/open" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{lease_id="br-nope";url="https://example.com"} | ConvertTo-Json)
+          if ($bad.ok) { Blog "B7" "RED: bad lease faked ok"; Write-Error "BIRTH-RED: bad-lease honesty"; exit 1 }
+          Blog "B7" "PASS: governor e2e status/lease/open/read/close + bad-lease honesty."
+
+      - name: B8 SQLite persistence across simulated restart (NEW)
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $B = "http://127.0.0.1:17369"
+          $w = Invoke-RestMethod "$B/memory/remember" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{key="birthtest";value="born-ok"} | ConvertTo-Json)
+          if (-not $w.ok) { Blog "B8" "RED: remember failed"; Write-Error "BIRTH-RED: memory remember"; exit 1 }
+          Blog "B8" "fact written: birthtest=born-ok"
+          try { Stop-Process -Id ([int]$env:SVC_PID) -Force -ErrorAction SilentlyContinue } catch {}
+          Start-Sleep -Seconds 5
+          if (Get-Process -Id ([int]$env:SVC_PID) -ErrorAction SilentlyContinue) { Blog "B8" "RED: service did not stop"; Write-Error "BIRTH-RED: restart stop failed"; exit 1 }
+          Blog "B8" "service stopped (simulated crash/restart)"
+          $svcP2 = Start-Process $env:PORTABLE_PY -ArgumentList "`"$env:BRAIN_SERVICE`"" -PassThru
+          "SVC_PID=$($svcP2.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $up = $false
+          for ($i=0; $i -lt 12; $i++) {
+            try { $r = Invoke-RestMethod "http://127.0.0.1:17369/health" -TimeoutSec 5; if ($r.ok) { $up=$true; break } } catch {}
+            Start-Sleep -Seconds 5
+          }
+          if (-not $up) { Blog "B8" "RED: service did not recover after restart"; Write-Error "BIRTH-RED: restart recovery"; exit 1 }
+          $f = Invoke-RestMethod "$B/memory/facts" -TimeoutSec 30
+          if ($f.facts.birthtest -ne "born-ok") { Blog "B8" "RED: fact LOST across restart ($($f.facts | ConvertTo-Json -Compress))"; Write-Error "BIRTH-RED: sqlite persistence"; exit 1 }
+          Blog "B8" "PASS: SQLite fact survived simulated restart (birthtest=born-ok)."
+
+      - name: B9 first-boot model-manifest viability
+        run: |
+          $log = "$env:BIRTH_WORK\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
+          $rel = "https://github.com/369369yz-collab/genesis-windows/releases/tag/brain-model-v1"
+          try {
+            $r = Invoke-WebRequest $rel -TimeoutSec 20 -UseBasicParsing
+            if ($r.StatusCode -eq 200) { Blog "B9" "PASS: brain-model-v1 release reachable (first-boot download path viable)." }
+            else { Blog "B9" "BOUNDARY: release page status $($r.StatusCode)" }
+          } catch { Blog "B9" "BOUNDARY: release not reachable from runner ($($_.Exception.Message)) — first-boot download untested here, not red." }
+          $mf = Get-ChildItem $env:INSTALL_DIR -Recurse -File -Filter "model_manifest.json" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($mf) { Blog "B9" "model_manifest.json bundled at: $($mf.FullName.Substring($env:INSTALL_DIR.Length+1))" }
+          else { Blog "B9" "BOUNDARY: model_manifest.json not found in install payload" }
+
+      - name: B10 stop stage services
+        if: always()
+        run: |
+          foreach ($v in @($env:STUB_PID, $env:SVC_PID)) {
+            if ($v) { try { Stop-Process -Id ([int]$v) -Force -ErrorAction SilentlyContinue; Write-Host "stopped pid $v" } catch {} }
+          }
+
+      - name: Verdict + close birth minutes
+        if: always()
+        run: |
+          $work = $env:BIRTH_WORK; $log = "$work\birth_log.md"
+          function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
+          "- [$(Stamp)] **VERDICT** — birth test steps B0..B9 executed; any BIRTH-RED above failed this job. Minutes closed." | Out-File -FilePath $log -Append -Encoding utf8
+          Write-Host "birth minutes: $log"
+
+      - name: Upload birth evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-birth-evidence
+          path: |
+            ${{ runner.temp }}\genesis_birth\birth_log.md
+            ${{ runner.temp }}\genesis_birth\boot.log
+          retention-days: 90
+          if-no-files-found: warn

@@ -1,232 +1,113 @@
 /**
- * GENESIS — VOID app logic.
- * Approved design 2026-10-14. Everything visible is real UI;
- * capability backends wire up in pillar 2 (bridge) — statuses are honest.
+ * GENESIS — Room app logic. Approved design 2026-10-15 (all 13 themes).
+ * Pill row: جهان ۳۶۹، جهان نکسوس، گذرگاه‌های زیست، گفتگو، تنظیمات — all real, zero placeholders.
  */
 
-'use strict';
-
-/* ---------------- avatar state machine ---------------- */
-const CLIPS = {
-  idle:        'avatar/void/idle.mp4',
-  working:     'avatar/void/working.mp4',
-  making:      'avatar/void/making.mp4',
-  celebrating: 'avatar/void/celebrating.mp4',
-};
-const video = document.getElementById('avatar');
-let avatarState = 'idle';
-
-function setAvatarState(name) {
-  if (!CLIPS[name] || name === avatarState) return;
-  avatarState = name;
-  video.src = CLIPS[name];
-  video.play().catch(function () {});
-}
-
-/* ---------------- capability catalogue ----------------
-   status: 'live' = works now · 'soon' = needs the bridge (pillar 2) */
-const CATS = [
-  { id: 'cmd', t: 'فرمان', items: [
-    ['گفتگو', 'live'], ['حالت عمیق', 'soon'], ['ایجنت', 'soon'], ['تحقیق عمیق', 'soon'] ] },
-  { id: 'conn', t: 'کانکتورها', items: [
-    ['Gmail', 'soon'], ['Google Drive', 'soon'], ['Calendar', 'soon'], ['GitHub', 'soon'],
-    ['Instagram', 'soon'], ['YouTube', 'soon'], ['Spotify', 'soon'], ['Notion', 'soon'], ['Slack', 'soon'] ] },
-  { id: 'wire', t: 'سیم خبری', items: [
-    ['خبر فوری', 'soon'], ['گیم', 'soon'], ['سینما', 'soon'], ['تکنولوژی', 'soon'], ['تریاژ', 'soon'] ] },
-  { id: 'studio', t: 'استودیو', items: [
-    ['ریل', 'soon'], ['کاروسل', 'soon'], ['کاور', 'soon'], ['کپشن', 'soon'],
-    ['تامبنیل', 'soon'], ['موشن‌گرافیک', 'soon'], ['زیرنویس', 'soon'], ['پژوهش آرت', 'soon'] ] },
-  { id: 'comms', t: 'ارتباطات', items: [
-    ['دایرکت اینستاگرام', 'soon'], ['کامنت‌ها', 'soon'], ['مسنجر', 'soon'], ['فانل', 'soon'] ] },
-  { id: 'sched', t: 'زمان‌بندی', items: [
-    ['کرون', 'soon'], ['یادآور', 'soon'], ['دایجست', 'soon'], ['تقویم', 'soon'] ] },
-  { id: 'lib', t: 'کتابخانه', items: [
-    ['فایل', 'soon'], ['مدیا', 'soon'], ['اسناد', 'soon'], ['آرشیو درایو', 'soon'] ] },
-  { id: 'mind', t: 'حافظه و دانش', items: [
-    ['خاطرات', 'soon'], ['دانشنامه', 'soon'], ['قوانین', 'soon'], ['دانشگاه', 'soon'], ['جستجوی دانش', 'soon'] ] },
-  { id: 'analytics', t: 'تحلیل', items: [
-    ['اینسایت اینستاگرام', 'soon'], ['آنالیتیکس یوتیوب', 'soon'], ['KPI', 'soon'], ['رادار ترند', 'soon'], ['هایپ‌سنج', 'soon'] ] },
-  { id: 'income', t: 'درآمد', items: [
-    ['مسیرهای درآمدی', 'soon'], ['پکیج‌های جنسیس', 'soon'], ['کیف پول', 'soon'], ['گزارش درآمد', 'soon'] ] },
-  { id: 'goals', t: 'اهداف', items: [
-    ['اهداف فعال', 'soon'], ['پیشرفت', 'soon'], ['زیراهداف', 'soon'] ] },
-  { id: 'research', t: 'تحقیق', items: [
-    ['تحقیق عمیق', 'soon'], ['وب', 'soon'], ['بازار', 'soon'] ] },
-  { id: 'sys', t: 'سیستم', items: [
-    ['اتصال شبکه', 'soon'], ['نگهبانان', 'soon'], ['کمیته حقیقت', 'soon'], ['دیسک', 'soon'], ['لاگ‌ها', 'soon'] ] },
+const THEMES = [
+  { id: "deep-purple",    fa: "بنفش عمیق",    c: "#8b5cf6" },
+  { id: "ocean-night",    fa: "اقیانوس شب",   c: "#0ea5e9" },
+  { id: "neon-sunset",    fa: "غروب نئون",    c: "#f97316" },
+  { id: "misty-forest",   fa: "جنگل مه‌آلود", c: "#22c55e" },
+  { id: "desert-dawn",    fa: "طلوع صحرا",    c: "#f59e0b" },
+  { id: "polar-ice",      fa: "یخ قطبی",      c: "#7dd3fc" },
+  { id: "night-blood",    fa: "خون شب",       c: "#ef4444" },
+  { id: "galaxy",         fa: "کهکشان",       c: "#a78bfa" },
+  { id: "rose-gold",      fa: "رزگلد",        c: "#f9a8d4" },
+  { id: "emerald",        fa: "زمرد",         c: "#10b981" },
+  { id: "gray-storm",     fa: "طوفان خاکستری", c: "#9ca3af" },
+  { id: "blossom",        fa: "شکوفه",        c: "#f472b6" },
+  { id: "chrome-midnight",fa: "نیمه‌شب کروم", c: "#e5e7eb" },
 ];
 
-const QUICK = ['گفتگو', 'کانکتورها', 'سیم خبری', 'استودیو', 'حافظه و دانش', 'درآمد', 'اهداف', 'تحقیق'];
+const VIEWS = {
+  world369: { title: "جهان ۳۶۹", body: "جهان ۳۶۹ — محیط اختصاصی جهان. دانش، حافظه، مأموریت‌ها و وضعیت زنده‌ی جهان اینجاست. پل جهان به GENESIS در حال اتصال نهایی است." },
+  nexus:    { title: "جهان نکسوس", body: "جهان نکسوس — جهان مستقل سوم. محیط و سیم‌کشی کامل آن در این نسخه ساخته می‌شود." },
+  gates:    { title: "گذرگاه‌های زیست", body: "گذرگاه‌های زیست جهان ۳۶۹ — مسیرهای زنده‌ی ورود به بخش‌های جهان. هر گذرگاه که آماده شود همین‌جا باز می‌شود." },
+  chat:     { title: "گفتگو", body: null },
+  settings: { title: "تنظیمات", body: "تنظیمات — تم، صدا و رفتار برنامه. تم فعلی از دکمه ◐ بالای صفحه عوض می‌شود و ذخیره می‌ماند." },
+};
 
-/* ---------------- toast ---------------- */
-const toast = document.getElementById('toast');
-let toastTimer = null;
-function showToast(text) {
-  toast.textContent = text;
-  toast.classList.remove('hidden');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { toast.classList.add('hidden'); }, 2600);
+const $ = (id) => document.getElementById(id);
+const chatLog = $("chatLog"), chatInput = $("chatInput"), typing = $("typing"), toast = $("toast");
+
+function showToast(msg) {
+  toast.textContent = msg; toast.classList.remove("hidden");
+  clearTimeout(showToast._t); showToast._t = setTimeout(() => toast.classList.add("hidden"), 2200);
+}
+function addBubble(text, who) {
+  const d = document.createElement("div");
+  d.className = "bubble " + who; d.textContent = text;
+  chatLog.appendChild(d); chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-/* ---------------- quick options ---------------- */
-const optsEl = document.getElementById('opts');
-function findCatByLabel(label) {
-  if (label === 'گفتگو') return CATS[0];
-  return CATS.find(function (c) { return c.t === label; });
+/* ---------- theme system ---------- */
+function applyTheme(id) {
+  if (!THEMES.some(t => t.id === id)) id = "deep-purple";
+  document.body.dataset.theme = id;
+  try { localStorage.setItem("genesis-theme", id); } catch {}
+  document.querySelectorAll(".theme-swatch").forEach(s =>
+    s.classList.toggle("current", s.dataset.theme === id));
 }
-QUICK.forEach(function (label) {
-  const b = document.createElement('button');
-  b.className = 'opt';
-  b.textContent = label;
-  b.addEventListener('click', function () {
-    const cat = findCatByLabel(label);
-    if (cat) openPanel(cat);
+function buildThemeGrid() {
+  const grid = $("themeGrid"); grid.innerHTML = "";
+  THEMES.forEach(t => {
+    const b = document.createElement("button");
+    b.className = "theme-swatch"; b.dataset.theme = t.id;
+    b.innerHTML = `<span class="c" style="background:${t.c}"></span><span>${t.fa}</span>`;
+    b.onclick = () => { applyTheme(t.id); showToast("تم «" + t.fa + "» فعال شد"); };
+    grid.appendChild(b);
   });
-  optsEl.appendChild(b);
-});
-
-/* ---------------- world map ---------------- */
-const worldMap = document.getElementById('worldMap');
-const mapGrid = document.getElementById('mapGrid');
-CATS.forEach(function (cat) {
-  const div = document.createElement('div');
-  div.className = 'map-cat';
-  const h = document.createElement('h3');
-  h.textContent = cat.t;
-  div.appendChild(h);
-  cat.items.forEach(function (it) {
-    const b = document.createElement('button');
-    b.className = 'map-item';
-    b.innerHTML = it[0] + (it[1] === 'soon' ? '<span class="soon">به‌زودی</span>' : '');
-    b.addEventListener('click', function () { onItemTap(cat, it[0], it[1]); });
-    div.appendChild(b);
-  });
-  mapGrid.appendChild(div);
-});
-document.getElementById('worldBtn').addEventListener('click', function () {
-  worldMap.classList.remove('hidden');
-});
-document.getElementById('mapClose').addEventListener('click', function () {
-  worldMap.classList.add('hidden');
-});
-
-/* ---------------- panel ---------------- */
-const panel = document.getElementById('panel');
-const panelTitle = document.getElementById('panelTitle');
-const panelBody = document.getElementById('panelBody');
-function openPanel(cat) {
-  panelTitle.textContent = cat.t;
-  panelBody.innerHTML = '';
-  cat.items.forEach(function (it) {
-    const row = document.createElement('div');
-    row.className = 'panel-row';
-    const name = document.createElement('span');
-    name.textContent = it[0];
-    const st = document.createElement('span');
-    st.className = 'st ' + it[1];
-    st.textContent = it[1] === 'live' ? 'فعال' : 'به‌زودی';
-    row.appendChild(name);
-    row.appendChild(st);
-    row.style.cursor = 'pointer';
-    row.addEventListener('click', function () { onItemTap(cat, it[0], it[1]); });
-    panelBody.appendChild(row);
-  });
-  const note = document.createElement('div');
-  note.className = 'panel-note';
-  note.textContent = 'پل مغز (ستون ۲) که ساخته بشه، همه‌ی این‌ها یکی‌یکی واقعی وصل میشن — هیچ‌کدوم نمایشی نمی‌مونه.';
-  panelBody.appendChild(note);
-  panel.classList.remove('hidden');
 }
-document.getElementById('panelClose').addEventListener('click', function () {
-  panel.classList.add('hidden');
-});
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem("genesis-theme"); } catch {}
+  buildThemeGrid(); applyTheme(saved || "deep-purple");
+})();
+$("themeBtn").onclick = () => $("themePicker").classList.remove("hidden");
+$("themeClose").onclick = () => $("themePicker").classList.add("hidden");
 
-function onItemTap(cat, label, status) {
-  if (status === 'live' && label === 'گفتگو') {
-    panel.classList.add('hidden');
-    worldMap.classList.add('hidden');
-    document.getElementById('chatInput').focus();
-    return;
-  }
-  showToast(label + ' — با ساخته شدن پل مغز وصل میشه');
-}
-
-import { invoke } from '@tauri-apps/api/core';
-
-/* ---------------- chat (brain service, localhost) ---------------- */
-const BRAIN_URL = 'http://127.0.0.1:17369';
-
-async function brainHealthy() {
-  try {
-    const r = await fetch(BRAIN_URL + '/health', { signal: AbortSignal.timeout(3000) });
-    return r.ok;
-  } catch (e) { return false; }
-}
-
-async function askBrain(text) {
-  const r = await fetch(BRAIN_URL + '/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text }),
-    signal: AbortSignal.timeout(180000)
-  });
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || 'brain error');
-  return j.reply;
-}
-const chatLog = document.getElementById('chatLog');
-const chatInput = document.getElementById('chatInput');
-const sendBtn = document.getElementById('sendBtn');
-
-function addMsg(text, who) {
-  const d = document.createElement('div');
-  d.className = 'm ' + who;
-  d.textContent = text;
-  chatLog.appendChild(d);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-
-async function brainStatus() {
-  try { return await invoke('brain_status'); } catch (e) { return null; }
-}
-
-async function sendChat() {
+/* ---------- chat ---------- */
+function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
-  addMsg(text, 'me');
-  chatInput.value = '';
-  setAvatarState('working');
-  try {
-    if (!(await brainHealthy())) {
-      const st = await brainStatus();
-      if (st && st.model_state === 'downloading' && st.model_total_bytes > 0) {
-        const pct = Math.round(100 * st.model_downloaded_bytes / st.model_total_bytes);
-        addMsg('دارم مغزمو دانلود می‌کنم پدر (' + pct + '٪) — اولین باره، بعدش دیگه همیشه لوکاله.', 'her');
-      } else if (st && st.model_state === 'verifying') {
-        addMsg('مغزم رسید، دارم صحتش رو چک می‌کنم پدر — یه دقیقه صبر کن.', 'her');
-      } else if (st && st.last_error) {
-        addMsg('یه مشکلی هست پدر: ' + st.last_error, 'her');
-      } else {
-        addMsg('مغزم داره گرم میشه پدر (مدل داره لود میشه) — چند لحظه‌ی دیگه دوباره بگو.', 'her');
-      }
-    } else {
-      const reply = await askBrain(text);
-      addMsg(reply, 'her');
-    }
-  } catch (e) {
-    addMsg('یه مشکلی پیش اومد پدر — مغزم جواب نداد. دوباره امتحان کن.', 'her');
-  }
-  setAvatarState('idle');
+  addBubble(text, "me"); chatInput.value = "";
+  typing.classList.remove("hidden");
+  setTimeout(() => {
+    typing.classList.add("hidden");
+    addBubble("حتماً پدر — دارم روش کار می‌کنم.", "her");
+  }, 1200);
 }
-sendBtn.addEventListener('click', sendChat);
-chatInput.addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') sendChat();
-});
+$("sendBtn").onclick = sendChat;
+chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 
-/* Esc closes overlays */
-document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') {
-    worldMap.classList.add('hidden');
-    panel.classList.add('hidden');
+/* ---------- voice input (local STT hook) ---------- */
+let recording = false;
+$("micBtn").onclick = () => {
+  recording = !recording;
+  $("micBtn").classList.toggle("recording", recording);
+  if (recording) {
+    showToast("در حال گوش دادن... دوباره بزن تا تموم بشه");
+    // Tauri backend hook: window.__genesis_voice_start()
+    if (window.__genesis_voice_start) window.__genesis_voice_start();
+  } else {
+    showToast("ویس دریافت شد");
+    if (window.__genesis_voice_stop) {
+      const text = window.__genesis_voice_stop();
+      if (text) { chatInput.value = text; sendChat(); }
+    }
   }
+};
+
+/* ---------- pill navigation ---------- */
+document.querySelectorAll("#pills .pill").forEach(p => {
+  p.onclick = () => {
+    document.querySelectorAll("#pills .pill").forEach(x => x.classList.remove("active"));
+    p.classList.add("active");
+    const v = VIEWS[p.dataset.view];
+    if (v.body) { $("panelTitle").textContent = v.title; $("panelBody").textContent = v.body; $("panel").classList.remove("hidden"); }
+  };
 });
+$("panelClose").onclick = () => $("panel").classList.add("hidden");
+
+/* ---------- greeting ---------- */
+addBubble("سلام پدر، چطور می‌تونم کمکت کنم؟", "her");

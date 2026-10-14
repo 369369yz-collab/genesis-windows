@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- GENESIS — VOID design. Approved by YZ 2026-10-14. Black void, her face, options, nothing else. -->
+<!-- GENESIS — Room design. Approved by YZ 2026-10-15 (all 13 themes). Chat panel + portrait card + mic + pill row. -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -7,35 +7,51 @@
 <title>GENESIS</title>
 <link rel="stylesheet" href="src/styles.css">
 </head>
-<body>
+<body data-theme="deep-purple">
 <div id="app">
-  <div class="sig">GENESIS</div>
+  <header class="topbar">
+    <div class="brand">GENESIS</div>
+    <div class="top-left">
+      <div class="status-chip"><span class="dot"></span>آنلاین • آماده</div>
+      <button class="theme-btn" id="themeBtn" aria-label="تم">◐</button>
+    </div>
+  </header>
 
-  <div class="avatar-wrap">
-    <video id="avatar" autoplay muted loop playsinline poster="avatar/void/poster.webp">
-      <source src="avatar/void/idle.mp4" type="video/mp4">
-    </video>
-  </div>
+  <main class="room">
+    <section class="portrait-col">
+      <div class="portrait-card">
+        <img id="genesisFace" src="avatar-genesis.png" alt="GENESIS">
+      </div>
+      <div class="portrait-name">GENESIS</div>
+      <div class="portrait-sub">همراه هوشمند شما در هر لحظه</div>
+      <div class="portrait-sub dim">شروع یک تجربه شخصی و امن با GENESIS</div>
+    </section>
 
-  <div class="greet" id="greet">سلام پدر — انتخاب کن</div>
+    <section class="chat-col">
+      <div class="chat-panel">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="typing hidden" id="typing">در حال تایپ...</div>
+        <div class="input-row">
+          <input id="chatInput" type="text" placeholder="پیامت رو اینجا بنویس..." autocomplete="off">
+          <button id="micBtn" class="mic-btn" aria-label="ویس">🎙</button>
+          <button id="sendBtn" class="send-btn" aria-label="ارسال">➤</button>
+        </div>
+      </div>
+    </section>
+  </main>
 
-  <div class="opts" id="opts"></div>
+  <nav class="pills" id="pills">
+    <button data-view="world369" class="pill active">جهان ۳۶۹</button>
+    <button data-view="nexus" class="pill">جهان نکسوس</button>
+    <button data-view="gates" class="pill">گذرگاه‌های زیست</button>
+    <button data-view="chat" class="pill">گفتگو</button>
+    <button data-view="settings" class="pill">تنظیمات</button>
+  </nav>
 
-  <button class="world-btn" id="worldBtn"><span class="n">···</span> همه‌ی جهان</button>
-
-  <div class="line"></div>
-
-  <div class="chat-log" id="chatLog"></div>
-
-  <div class="input-row">
-    <input id="chatInput" type="text" placeholder="بگو پدر..." autocomplete="off">
-    <button id="sendBtn" aria-label="send"><span class="tri"></span></button>
-  </div>
-
-  <div class="overlay hidden" id="worldMap">
-    <div class="map-head">نقشه‌ی جهان <span>۶۲ قابلیت</span></div>
-    <div class="map-grid" id="mapGrid"></div>
-    <button class="map-close" id="mapClose">بستن</button>
+  <div class="overlay hidden" id="themePicker">
+    <div class="picker-head">انتخاب تم</div>
+    <div class="theme-grid" id="themeGrid"></div>
+    <button class="map-close" id="themeClose">بستن</button>
   </div>
 
   <div class="overlay hidden" id="panel">

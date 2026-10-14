@@ -66,6 +66,46 @@ impl BrainLauncher {
         eprintln!("[brain] {e}");
     }
 
+    /// Reassemble the model from its NSIS-safe 512MB parts (shipped as
+    /// `Qwen3-8B-Q4_K_M.gguf.partNN` resources — makensis cannot mmap a
+    /// single 5GB file). Reassembly happens once, into the installed
+    /// resources dir; the pinned SHA-256 check afterwards proves the
+    /// model is byte-identical.
+    fn reassemble_model(model: &Path) -> Result<(), String> {
+        let dir = model.parent().ok_or("model has no parent dir")?;
+        let stem = model.file_name().ok_or("model has no file name")?
+            .to_string_lossy().to_string();
+        let mut parts: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map_err(|e| format!("cannot list models dir: {e}"))?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().starts_with(&format!("{stem}.part")))
+                    .unwrap_or(false)
+            })
+            .collect();
+        if parts.is_empty() {
+            return Err(format!(
+                "model missing and no .part files found in {}", dir.display()));
+        }
+        parts.sort();
+        eprintln!("[brain] reassembling model from {} parts...", parts.len());
+        let tmp = dir.join(format!("{stem}.assembling"));
+        let mut out = std::fs::File::create(&tmp)
+            .map_err(|e| format!("cannot create assembly file: {e}"))?;
+        for part in &parts {
+            let mut f = std::fs::File::open(part)
+                .map_err(|e| format!("cannot open {}: {e}", part.display()))?;
+            std::io::copy(&mut f, &mut out)
+                .map_err(|e| format!("copy failed for {}: {e}", part.display()))?;
+        }
+        drop(out);
+        std::fs::rename(&tmp, model)
+            .map_err(|e| format!("cannot finalize assembled model: {e}"))?;
+        eprintln!("[brain] model reassembled");
+        Ok(())
+    }
+
     /// Chunked SHA-256 re-verification at every boot (W14 boot rule).
     fn verify_model(path: &Path) -> Result<(), String> {
         let mut file = std::fs::File::open(path)
@@ -130,12 +170,18 @@ impl BrainLauncher {
 
         for (label, p) in [
             ("llama-server.exe", &llama_exe),
-            ("model", &model),
             ("python.exe", &python_exe),
             ("service.py", &service_py),
         ] {
             if !p.exists() {
                 self.set_error(&format!("missing payload: {label} at {}", p.display()));
+                return;
+            }
+        }
+        // The model ships as .partNN files (NSIS-safe); reassemble on first boot.
+        if !model.exists() {
+            if let Err(e) = Self::reassemble_model(&model) {
+                self.set_error(&e);
                 return;
             }
         }

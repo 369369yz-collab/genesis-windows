@@ -58,6 +58,9 @@ jobs:
       - name: Fetch portable Python (pinned, hash-verified)
         run: python installer/fetch_python.py
 
+      - name: Split model into NSIS-safe parts (512MB)
+        run: python installer/split_model.py
+
       - name: Stage brain (one-code) into resources
         run: python installer/stage_brain.py
 

@@ -242,6 +242,20 @@ impl BrainLauncher {
         false
     }
 
+    /// Resolve a bundled resource. Tauri v2 keeps the `resources/` prefix
+    /// from tauri.conf in the installed layout (`<res>/resources/...`),
+    /// while the original code assumed `<res>/...` directly. Try both and
+    /// take whichever exists — the payload check below then verifies.
+    /// (Found by the windows self-test 2026-10-14: the brain silently never
+    /// booted because every payload lookup missed.)
+    fn resource(res_dir: &Path, rel: &str) -> PathBuf {
+        let direct = res_dir.join(rel);
+        if direct.exists() {
+            return direct;
+        }
+        res_dir.join("resources").join(rel)
+    }
+
     /// Boot the whole brain. Called once from setup() on a background thread.
     pub fn boot(&mut self, app: &AppHandle) {
         let res_dir: PathBuf = match app.path().resource_dir() {
@@ -258,12 +272,12 @@ impl BrainLauncher {
                 return;
             }
         };
-        let llama_exe = res_dir.join("llama-server.exe");
-        let python_exe = res_dir.join("python").join("python.exe");
-        let brain_dir = res_dir.join("brain").join("genesis_onecode");
+        let llama_exe = Self::resource(&res_dir, "llama-server.exe");
+        let python_exe = Self::resource(&res_dir, "python/python.exe");
+        let brain_dir = Self::resource(&res_dir, "brain/genesis_onecode");
         let service_py = brain_dir.join("service.py");
         let manifest = brain_dir.join("model_manifest.json");
-        let chrome_exe = res_dir.join("chromium").join("chrome.exe");
+        let chrome_exe = Self::resource(&res_dir, "chromium/chrome.exe");
         let models_dir = data_dir.join("models");
 
         {

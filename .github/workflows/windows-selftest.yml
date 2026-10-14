@@ -99,19 +99,21 @@ jobs:
           }
           $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
           Write-Host "registry: DisplayName=$($entry.DisplayName) InstallLocation=$dir"
-          $exePath = Join-Path $dir "GENESIS Final.exe"
-          $ok = $false
-          for ($i = 0; $i -lt 12; $i++) {
-            if (Test-Path $exePath) { $ok = $true; break }
-            Start-Sleep -Seconds 10
+          $exePath = $null
+          for ($i = 0; $i -lt 12 -and -not $exePath; $i++) {
+            $exePath = Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } |
+              Select-Object -First 1
+            if (-not $exePath) { Start-Sleep -Seconds 10 }
           }
-          if (-not $ok) {
+          if (-not $exePath) {
             Write-Host "InstallLocation dir listing:"
             if (Test-Path $dir) { Get-ChildItem $dir | Select-Object Name, Length | Write-Host } else { Write-Host "DIR DOES NOT EXIST: $dir" }
-            Write-Error "SELFTEST-RED: GENESIS Final.exe missing at registry InstallLocation"; exit 1
+            Write-Error "SELFTEST-RED: no GENESIS main exe at registry InstallLocation"; exit 1
           }
-          Write-Host "A2 PASS: installed at $dir"
+          Write-Host "A2 PASS: installed at $dir ($($exePath.Name))"
           "INSTALL_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MAIN_EXE=$($exePath.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: A3 inventory installed resources (honest layout log)
         run: |
@@ -260,7 +262,7 @@ jobs:
       - name: B1 first-boot session (real app, time-boxed model download)
         run: |
           $work = "$env:TEMP\genesis_selftest"
-          $exe = Join-Path $env:INSTALL_DIR "GENESIS Final.exe"
+          $exe = $env:MAIN_EXE
           $modelsDir = Join-Path $env:LOCALAPPDATA "com.genesis.final\models"
           $prog = "$work\firstboot_progress.jsonl"
           function NowIso { (Get-Date).ToUniversalTime().ToString("o") }

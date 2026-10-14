@@ -370,8 +370,10 @@ fn check_localappdata_writable() -> PreflightCheck {
 mod win32 {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::core::PCWSTR;
-    use windows_sys::Win32::Foundation::{BOOL, HKEY};
+    use windows_sys::Win32::Foundation::BOOL;
+    /// HKEY is absent from windows-sys 0.48 Foundation; it is a handle (isize).
+    #[allow(non_camel_case_types)]
+    type HKEY = isize;
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryInfoKeyW, RegQueryValueExW, HKEY_CURRENT_USER,
@@ -390,7 +392,7 @@ mod win32 {
             let rc = unsafe {
                 RegOpenKeyExW(
                     hive,
-                    PCWSTR(wpath.as_ptr()),
+                    wpath.as_ptr(),
                     0,
                     KEY_READ | view,
                     &mut key,
@@ -417,7 +419,7 @@ mod win32 {
         let rc = unsafe {
             RegQueryValueExW(
                 key,
-                PCWSTR(wvalue.as_ptr()),
+                wvalue.as_ptr(),
                 std::ptr::null_mut(),
                 &mut ty,
                 std::ptr::null_mut(),
@@ -431,7 +433,7 @@ mod win32 {
         let rc = unsafe {
             RegQueryValueExW(
                 key,
-                PCWSTR(wvalue.as_ptr()),
+                wvalue.as_ptr(),
                 std::ptr::null_mut(),
                 &mut ty,
                 buf.as_mut_ptr() as *mut u8,
@@ -458,7 +460,7 @@ mod win32 {
         let rc = unsafe {
             RegQueryValueExW(
                 key,
-                PCWSTR(wvalue.as_ptr()),
+                wvalue.as_ptr(),
                 std::ptr::null_mut(),
                 &mut ty,
                 &mut data as *mut u32 as *mut u8,
@@ -551,7 +553,7 @@ mod win32 {
         let mut _total_clusters: u32 = 0;
         let ok: BOOL = unsafe {
             GetDiskFreeSpaceW(
-                PCWSTR(wroot.as_ptr()),
+                wroot.as_ptr(),
                 &mut sectors_per_cluster,
                 &mut bytes_per_sector,
                 &mut free_clusters,

@@ -141,10 +141,19 @@ fn win32_free_ram() -> Option<u64> {
 fn win32_enforce_cap() -> Result<(), String> {
     use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        AssignProcessToJobObject, SetInformationJobObject,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
         JobObjectExtendedLimitInformation,
     };
+    // CreateJobObjectW is absent from windows-sys 0.48 JobObjects; declare it directly.
+    // Signature: HANDLE CreateJobObjectW(LPSECURITY_ATTRIBUTES, LPCWSTR) — kernel32, stable ABI.
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(
+            lpjobattributes: *const core::ffi::c_void,
+            lpname: *const u16,
+        ) -> HANDLE;
+    }
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
     unsafe {
         let job: HANDLE = CreateJobObjectW(std::ptr::null(), std::ptr::null());

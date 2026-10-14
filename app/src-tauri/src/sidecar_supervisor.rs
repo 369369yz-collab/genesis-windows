@@ -248,10 +248,17 @@ fn local_hour() -> Option<u8> {
     }
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::System::SystemInformation::{GetLocalTime, SYSTEMTIME};
+        use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+        // SYSTEMTIME is absent from windows-sys 0.48 SystemInformation; canonical 8x u16 layout.
+        #[repr(C)]
+        #[derive(Default)]
+        struct SYSTEMTIME {
+            w_year: u16, w_month: u16, w_day_of_week: u16, w_day: u16,
+            w_hour: u16, w_minute: u16, w_second: u16, w_milliseconds: u16,
+        }
         let mut st: SYSTEMTIME = unsafe { std::mem::zeroed() };
         unsafe { GetLocalTime(&mut st) };
-        Some(st.wHour as u8)
+        Some(st.w_hour as u8)
     }
     #[cfg(not(any(unix, target_os = "windows")))]
     {

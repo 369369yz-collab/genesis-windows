@@ -1,1 +1,68 @@
-{"_note":"PLACEHOLDER — replaced by installer/make_model_manifest.py output after the prepare-model workflow runs. Never ship this.","assembled_name":"Qwen3-8B-Q4_K_M.gguf","assembled_sha256":"d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785","assembled_size":5027783488,"parts":[],"release_tag":"brain-model-v1"}
+{
+  "release_tag": "brain-model-v1",
+  "assembled_name": "Qwen3-8B-Q4_K_M.gguf",
+  "assembled_size": 5027783488,
+  "assembled_sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+  "parts": [
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part00",
+      "size": 536870912,
+      "sha256": "d6542ea13263f1184fc89cc8b889dd36985beaeb77d64a3455c485e1c23300a1",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part00"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part01",
+      "size": 536870912,
+      "sha256": "8dd1d2b88450ff73f25902984a880390917938dcffc11a134dd56329c969bc32",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part01"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part02",
+      "size": 536870912,
+      "sha256": "9962e2a110186dcba49c98867610f2cbcc1265423b151cbb6c4102f941e39227",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part02"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part03",
+      "size": 536870912,
+      "sha256": "721102591f5c35dc81ac0d7d9339c44e93538458f7fdee6d84adfe15d3fc90a3",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part03"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part04",
+      "size": 536870912,
+      "sha256": "b8cbbc2fe00b49c8084b03a7c2b70a1c9d2bab80342bd72d36406cc4d5b4f0de",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part04"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part05",
+      "size": 536870912,
+      "sha256": "fb4c1088cf014988767d1c2671140e3ce201b784a6f313feb12e589fd9dee70f",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part05"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part06",
+      "size": 536870912,
+      "sha256": "6712d11e20cd65d47806798e01c3e077542c248a29a69e1490a977a9f8cb983e",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part06"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part07",
+      "size": 536870912,
+      "sha256": "503cf3b9b475078bcbc423226ee443ad855ab3dface5cc530117408610e86dca",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part07"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part08",
+      "size": 536870912,
+      "sha256": "7c9521588f97328181c98afe58a1f2a8409e85470a2db3e406882b231d1fcb1f",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part08"
+    },
+    {
+      "name": "Qwen3-8B-Q4_K_M.gguf.part09",
+      "size": 195945280,
+      "sha256": "746ad84f90a4bac9ec2d961c970130fc145c692e258f80626b9bb61b15f4dee2",
+      "url": "https://github.com/369369yz-collab/genesis-windows/releases/download/brain-model-v1/Qwen3-8B-Q4_K_M.gguf.part09"
+    }
+  ]
+}

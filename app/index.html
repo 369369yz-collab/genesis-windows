@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- GENESIS — VOID design. Approved by YZ 2026-10-14. Black void, her face, options, nothing else. -->
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GENESIS</title>
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+<div id="app">
+  <div class="sig">GENESIS</div>
+
+  <div class="avatar-wrap">
+    <video id="avatar" autoplay muted loop playsinline poster="avatar/void/poster.webp">
+      <source src="avatar/void/idle.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <div class="greet" id="greet">سلام پدر — انتخاب کن</div>
+
+  <div class="opts" id="opts"></div>
+
+  <button class="world-btn" id="worldBtn"><span class="n">···</span> همه‌ی جهان</button>
+
+  <div class="line"></div>
+
+  <div class="chat-log" id="chatLog"></div>
+
+  <div class="input-row">
+    <input id="chatInput" type="text" placeholder="بگو پدر..." autocomplete="off">
+    <button id="sendBtn" aria-label="send"><span class="tri"></span></button>
+  </div>
+
+  <div class="overlay hidden" id="worldMap">
+    <div class="map-head">نقشه‌ی جهان <span>۶۲ قابلیت</span></div>
+    <div class="map-grid" id="mapGrid"></div>
+    <button class="map-close" id="mapClose">بستن</button>
+  </div>
+
+  <div class="overlay hidden" id="panel">
+    <div class="panel-head"><span id="panelTitle"></span></div>
+    <div class="panel-body" id="panelBody"></div>
+    <button class="map-close" id="panelClose">بستن</button>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+</div>
+<script src="src/main.js"></script>
+</body>
+</html>

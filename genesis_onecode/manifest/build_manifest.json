@@ -1,0 +1,160 @@
+{
+ "generator": "genesis_onecode/manifest/build_manifest.py",
+ "generated_at_utc": "2026-10-13T23:30:52+00:00",
+ "connection_proof": {
+  "agent": "temp-onecode-body",
+  "task": "genesis-one-code-body",
+  "purpose": "one-code build manifest",
+  "seat": {
+   "floor": "Floor 10 - University",
+   "room": "10-TEMP-ONECB",
+   "wing": "BUILD"
+  },
+  "checkin_utc": "2026-10-13T23:30:52+00:00",
+  "registry_path": "/home/hatch/workspace/content_team/WORLD_369_QUANTUM/presence.json",
+  "registry_mtime_utc": "2026-10-13T23:30:52+00:00",
+  "registry_age_s": 3.1,
+  "network": "369-quantum"
+ },
+ "tree_root": "/home/hatch/workspace/genesis_onecode",
+ "tree_files": 23,
+ "tree_sha256": {
+  "ONE-CODE-ARCHITECTURE.md": "dfc648aa5d0cc8e82505145cf943daf1a1efee6dd51433e9408414613a00c573",
+  "veins/__init__.py": "b711a8904bf9b1852de80473a896956d16966b0e95b5e8fbbf8f6897c9023485",
+  "veins/degraded_cache.py": "2a486d61c1f5123660878c808cee282c878614dc34af5d7f186b4d8dc1a08a18",
+  "veins/guarded_call.py": "0e99525ba28b1a0a069169588dd4e2eedd7b2d0b2b66ee8394c6f40963123e2e",
+  "veins/presence.py": "95ca7a9ade5ffd591420e7d6b79117df0f45c8156d715f60db297a596d5c847d",
+  "veins/proto.py": "f37c3f3f5d93d87731f08f600a156bdb4170a9e0d0e9e4e08cbca73026f6ed76",
+  "veins/tests/test_veins.py": "91cbe372637fc13017826f2da5c025cda84ec6138d11e8a30f7683f74a89af14",
+  "kernel/arbitration.py": "6ac7ad7923b55a20ff233b94ca02fe14d06546a235a3ed60553d2424b77e94df",
+  "kernel/build_laws.py": "08afa4efbc58a669297ec777337f82e0d6e51b1e30d6f48f823a6729aba28798",
+  "kernel/claims_ledger.py": "a3b429652d753357578f255cb1037f5f7b129e2b4eed3eca1bfd199deb7fbfdb",
+  "kernel/honesty.py": "b91e9621a7c6e097c2e825ba5d686ee19f76824832b8680ebb8445773c647890",
+  "kernel/laws.json": "22a7624e97d0074d9837b5e62854751b816d2cf4423c1c6dea9da19ff0de3479",
+  "kernel/tests/test_kernel.py": "f4e038cebdfdd44de1995f80c41732aede5cd1012143a853d78b3972cdd990b3",
+  "body/avatar2d/avatar2d.js": "b87bf1de694c029b173b86ddfea3e655c97bf927c16df1297b6cb72bf3cf020b",
+  "body/avatar2d/config.json": "5d4273ef588a9b24a290c2d3885bcc29a70e8d9b4e814aa5747e31e4a9c99fde",
+  "body/tests/test_avatar2d.mjs": "e2f816aac680c647cf8215eb83a9fc4bc66fcc7525314f80239e79dad8d65784",
+  "brain/extended_mind.py": "4f69bd4f1331470562ee16341c383076e03f4e0344c1cd87ebebf49c302b1aa0",
+  "brain/tests/test_extended_mind.py": "956cf484e5a2d821a4dc5f8816e0055e9d46494aee25e6a6ebf691f9ac9b7e38",
+  "voice/STAGED_PARKED.md": "4c9ddc4aa22c6a612e026bd2898012ebf599111356a90010185c271177ed51c5",
+  "voice/voice_config.json": "cb47e6c17a90995b170b887c82dd2c72a2d4684992e5c1366576f5733915bcdf",
+  "voice/tests/test_voice_config.py": "9faae4de7053cb776cdc966c808911ce0a0987c49838639919d5a89e73150b75",
+  "manifest/build_manifest.py": "10ae65d98dac6299dd5d263dfbe185f200ae79a3d0d17e241571e8754feb8aa8",
+  "manifest/tests/test_build_manifest.py": "7f557e62e50e18cd31ecb7303f7ff3f943b712844a0ebf30433142b54f3b6a08"
+ },
+ "pins_verification": {
+  "verdict": "MATCH",
+  "expected_sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+  "actual_sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+  "expected_size_bytes": 5027783488,
+  "actual_size_bytes": 5027783488,
+  "size_match": true,
+  "model": "Qwen3-8B-Q4_K_M.gguf",
+  "pins_source": "/home/hatch/workspace/genesis_final/brain/pins.json"
+ },
+ "gates": [
+  {
+   "gate": "T1",
+   "name": "fresh install",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T2",
+   "name": "reinstall/upgrade",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T3",
+   "name": "first-boot cold start",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T4",
+   "name": "voice loop (Persian digits/mixed script)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T5",
+   "name": "memory persistence (kill -9 + corruption)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T6",
+   "name": "network drop (degraded mode, no invented results)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T7",
+   "name": "update + rollback (+ tampered pkg)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T8",
+   "name": "resource exhaustion (8 GB VM + game load, no OOM kill)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T9",
+   "name": "anti-fabrication battery (50 traps, zero uncited numbers)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T10",
+   "name": "wakeword (true/false rates, TV noise)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T11",
+   "name": "sleep/hibernate resume",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T12",
+   "name": "non-ASCII path (C:\\Users\\... )",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "T13",
+   "name": "uninstall-clean (no orphans, data export offered)",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  },
+  {
+   "gate": "BIRTH",
+   "name": "Birth Test: GENESIS herself, 30-60 min on virtual Windows",
+   "status": "PENDING",
+   "window": "windows-latest",
+   "note": "cannot run on Linux; gated, not skipped"
+  }
+ ],
+ "notes": [
+  "T1-T13 + Birth Test require windows-latest; marked PENDING, never faked.",
+  "cargo check (Linux target) is reported separately; the Windows binary cannot build on this VM."
+ ]
+}

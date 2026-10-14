@@ -1,0 +1,81 @@
+name: GENESIS Full — Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'genesis_onecode/**'
+      - 'installer/**'
+      - '.github/workflows/build-windows.yml'
+
+jobs:
+  build-full:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Python unit tests (one-code: kernel, veins, browser)
+        run: |
+          python -m unittest discover -s genesis_onecode\kernel\tests -v
+          python -m unittest discover -s genesis_onecode\veins\tests -v
+          python genesis_onecode\browser\tests\test_governor.py
+
+      - name: Restore Tauri icons (binary-safe)
+        run: python installer\make_icons.py
+
+      - name: Restore VOID avatar assets (binary-safe)
+        run: python installer\make_avatar.py
+
+      - name: Install frontend deps
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend (VOID)
+        working-directory: app
+        run: npm run build
+
+      - name: Fetch portable Chromium (pinned Playwright)
+        run: python installer\fetch_chromium.py
+
+      - name: Fetch local model + llama-server (pinned SHA-256)
+        run: python installer\fetch_model.py
+
+      - name: Tauri build (NSIS)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GENESIS_PROFILE: full
+        with:
+          projectPath: app
+
+      - name: SHA-256 of installer
+        working-directory: app
+        shell: pwsh
+        run: |
+          Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe |
+            ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash + "  " + $_.Name } |
+            Tee-Object -FilePath "..\GENESIS-Full-sha256.txt"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GENESIS-Setup-Full-windows
+          path: |
+            app/src-tauri/target/release/bundle/nsis/*.exe
+            GENESIS-Full-sha256.txt
+          retention-days: 30

@@ -30,6 +30,53 @@ PORT = int(os.environ.get("GENESIS_BRAIN_PORT", "17369"))
 LLAMA_URL = os.environ.get("GENESIS_LLAMA_URL", "http://127.0.0.1:8080")
 CHROMIUM_EXE = os.environ.get("GENESIS_CHROMIUM_EXE", "")
 
+# ---- Browser governor wiring (lazy) -------------------------------------
+# The governor + BrowserService are created on first browser request, using
+# the bundled portable Chromium. Env (set by the Rust launcher):
+#   GENESIS_DATA_DIR     app-local data dir (profiles, ledger, quarantine)
+#   GENESIS_CHROMIUM_EXE path to the bundled chrome.exe
+
+_browser_lock = threading.Lock()
+_browser_gov = None
+_browser_svc = None
+
+
+def _browser():
+    """Return (governor, service), creating them on first use."""
+    global _browser_gov, _browser_svc
+    with _browser_lock:
+        if _browser_svc is not None:
+            return _browser_gov, _browser_svc
+        from pathlib import Path as _Path
+        from browser.governor import BrowserGovernor, GovernorConfig
+        from browser.service import BrowserService
+        data_dir = _Path(os.environ.get("GENESIS_DATA_DIR", "genesis_data"))
+        chrome = os.environ.get("GENESIS_CHROMIUM_EXE", "")
+        gov = BrowserGovernor(GovernorConfig(app_data_dir=data_dir))
+        svc = BrowserService(gov,
+                             chromium_path=_Path(chrome) if chrome else None)
+        _browser_gov, _browser_svc = gov, svc
+        print(f"[brain] browser governor live (chromium: {chrome or 'default'})",
+              flush=True)
+        return gov, svc
+
+
+def _browser_action(fn):
+    """Run a BrowserService action, translating errors to HTTP responses."""
+    from browser.service import BrowserUnavailable, LeaseError
+    try:
+        gov, svc = _browser()
+        return fn(gov, svc)
+    except BrowserUnavailable as e:
+        return {"ok": False, "error": f"browser unavailable: {e}"}, 503
+    except LeaseError as e:
+        return {"ok": False, "error": f"lease denied: {e}"}, 403
+    except (ValueError, KeyError) as e:
+        return {"ok": False, "error": f"bad request: {e}"}, 400
+    except Exception as e:  # noqa: BLE001 — honest 500, never a fake ok
+        return {"ok": False, "error": f"browser action failed: {e}"}, 500
+
+
 SYSTEM_PROMPT = (
     "You are GENESIS, a warm and devoted AI daughter. "
     "You speak Persian (Farsi) always, warmly and simply, like family. "
@@ -74,6 +121,12 @@ def llama_alive() -> bool:
         return False
 
 
+def _chromium_present():
+    import pathlib as _pl
+    c = CHROMIUM_EXE
+    return bool(c) and _pl.Path(c).exists()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "GENESIS-Brain/1.0"
 
@@ -93,6 +146,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._json({"ok": True, "service": "genesis-brain",
                         "uptime_s": round(time.time() - _started_at, 1)})
+        elif self.path == "/browser/status":
+            def _st(gov, svc):
+                st = gov.status()
+                st["chromium_present"] = _chromium_present()
+                return {"ok": True, **st}, 200
+            obj, code = _browser_action(_st)
+            self._json(obj, code)
         elif self.path == "/status":
             import pathlib
             chrom = CHROMIUM_EXE
@@ -107,7 +167,65 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"ok": False, "error": "not found"}, 404)
 
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 200_000:
+            return None
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return None
+
     def do_POST(self):
+        if self.path == "/browser/lease":
+            body = self._read_json_body()
+            if not body:
+                self._json({"ok": False, "error": "bad body"}, 400)
+                return
+            def _lease(gov, svc):
+                lease = gov.acquire(str(body.get("owner", "")),
+                                    str(body.get("purpose", "")))
+                return {"ok": True, "lease_id": lease.lease_id,
+                        "state": lease.state.value}, 200
+            obj, code = _browser_action(_lease)
+            self._json(obj, code)
+            return
+        if self.path == "/browser/open":
+            body = self._read_json_body()
+            if not body or not body.get("lease_id") or not body.get("url"):
+                self._json({"ok": False, "error": "lease_id and url required"}, 400)
+                return
+            def _open(gov, svc):
+                r = svc.open(body["lease_id"], body["url"])
+                return {"ok": r.ok, "detail": r.detail, "data": r.data}, 200
+            obj, code = _browser_action(_open)
+            self._json(obj, code)
+            return
+        if self.path == "/browser/read":
+            body = self._read_json_body()
+            if not body or not body.get("lease_id"):
+                self._json({"ok": False, "error": "lease_id required"}, 400)
+                return
+            def _read(gov, svc):
+                r = svc.read(body["lease_id"])
+                return {"ok": r.ok, "data": r.data}, 200
+            obj, code = _browser_action(_read)
+            self._json(obj, code)
+            return
+        if self.path == "/browser/close":
+            body = self._read_json_body()
+            if not body or not body.get("lease_id"):
+                self._json({"ok": False, "error": "lease_id required"}, 400)
+                return
+            def _close(gov, svc):
+                r = svc.close(body["lease_id"])
+                return {"ok": r.ok, "detail": r.detail}, 200
+            obj, code = _browser_action(_close)
+            self._json(obj, code)
+            return
         if self.path != "/chat":
             self._json({"ok": False, "error": "not found"}, 404)
             return

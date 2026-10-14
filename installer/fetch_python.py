@@ -95,6 +95,31 @@ def main() -> int:
         print(f"FATAL: bundled python.exe failed to run:\n{r.stderr}", file=sys.stderr)
         return 1
     print(f"portable python OK: {r.stdout.strip().splitlines()[0]}")
+    # Playwright (pinned) for the browser governor — the driver only;
+    # the Chromium binary itself is bundled separately as a resource.
+    r = subprocess.run([str(exe), "-m", "pip", "--version"],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        print("pip missing — running ensurepip", flush=True)
+        r = subprocess.run([str(exe), "-m", "ensurepip", "--default-pip"],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            print(f"FATAL: ensurepip failed:\n{r.stderr}", file=sys.stderr)
+            return 1
+    r = subprocess.run(
+        [str(exe), "-m", "pip", "install", "--disable-pip-version-check",
+         "playwright==1.49.1"],
+        capture_output=True, text=True, timeout=600)
+    if r.returncode != 0:
+        print(f"FATAL: pip install playwright failed:\n{r.stderr}", file=sys.stderr)
+        return 1
+    r = subprocess.run(
+        [str(exe), "-c", "import playwright; print('playwright ok')"],
+        capture_output=True, text=True, timeout=60)
+    if r.returncode != 0 or "playwright ok" not in r.stdout:
+        print(f"FATAL: playwright import check failed:\n{r.stderr}", file=sys.stderr)
+        return 1
+    print("playwright 1.49.1 installed in portable python")
     shutil.rmtree(work, ignore_errors=True)
     return 0
 

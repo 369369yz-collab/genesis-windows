@@ -342,6 +342,7 @@ impl BrainLauncher {
                 format!("http://127.0.0.1:{LLAMA_PORT}"),
             )
             .env("GENESIS_CHROMIUM_EXE", chrome_exe.to_string_lossy().to_string())
+            .env("GENESIS_DATA_DIR", data_dir.to_string_lossy().to_string())
             .env("PYTHONUTF8", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::null())

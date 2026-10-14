@@ -232,6 +232,14 @@ jobs:
           $env:GENESIS_DATA_DIR = $dataDir
           $env:PYTHONUTF8 = "1"
           if ($env:CHROME_EXE) { $env:GENESIS_CHROMIUM_EXE = $env:CHROME_EXE }
+          # Persist service config across steps: B8 restarts the service in a
+          # fresh shell — without these, the restart uses a different data dir
+          # and the persistence test would be meaningless (harness bug in run 1).
+          "GENESIS_BRAIN_PORT=17369" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "GENESIS_LLAMA_URL=http://127.0.0.1:8080" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "GENESIS_DATA_DIR=$dataDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PYTHONUTF8=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($env:CHROME_EXE) { "GENESIS_CHROMIUM_EXE=$($env:CHROME_EXE)" | Out-File -FilePath $env:GITHUB_ENV -Append }
           $stubP = Start-Process python -ArgumentList "`"$work\stub_llama.py`"" -PassThru
           $svcP = Start-Process $env:PORTABLE_PY -ArgumentList "`"$env:BRAIN_SERVICE`"" -PassThru
           "STUB_PID=$($stubP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append

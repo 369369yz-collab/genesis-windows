@@ -248,13 +248,17 @@ fn local_hour() -> Option<u8> {
     }
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::System::SystemInformation::GetLocalTime;
-        // SYSTEMTIME is absent from windows-sys 0.48 SystemInformation; canonical 8x u16 layout.
+        // SYSTEMTIME is absent from windows-sys 0.48 SystemInformation; declare both locally.
+        // Canonical Win32 layout: 8x WORD in fixed order — stable ABI, kernel32.
         #[repr(C)]
         #[derive(Default)]
         struct SYSTEMTIME {
             w_year: u16, w_month: u16, w_day_of_week: u16, w_day: u16,
             w_hour: u16, w_minute: u16, w_second: u16, w_milliseconds: u16,
+        }
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetLocalTime(lpsystemtime: *mut SYSTEMTIME);
         }
         let mut st: SYSTEMTIME = unsafe { std::mem::zeroed() };
         unsafe { GetLocalTime(&mut st) };

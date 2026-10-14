@@ -153,6 +153,12 @@ class Handler(BaseHTTPRequestHandler):
                 return {"ok": True, **st}, 200
             obj, code = _browser_action(_st)
             self._json(obj, code)
+        elif self.path == "/memory/facts":
+            try:
+                from brain import memory as _mem
+                self._json({"ok": True, "facts": _mem.all_facts()})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
         elif self.path == "/status":
             import pathlib
             chrom = CHROMIUM_EXE
@@ -226,6 +232,30 @@ class Handler(BaseHTTPRequestHandler):
             obj, code = _browser_action(_close)
             self._json(obj, code)
             return
+        if self.path == "/memory/remember":
+            body = self._read_json_body()
+            if not body or not body.get("key"):
+                self._json({"ok": False, "error": "key required"}, 400)
+                return
+            try:
+                from brain import memory as _mem
+                _mem.remember(body["key"], body.get("value", ""))
+                self._json({"ok": True})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/memory/forget":
+            body = self._read_json_body()
+            if not body or not body.get("key"):
+                self._json({"ok": False, "error": "key required"}, 400)
+                return
+            try:
+                from brain import memory as _mem
+                gone = _mem.forget(body["key"])
+                self._json({"ok": True, "forgotten": gone})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
         if self.path != "/chat":
             self._json({"ok": False, "error": "not found"}, 404)
             return
@@ -246,13 +276,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "empty message"}, 400)
             return
         try:
-            reply = llama_chat([
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": message},
-            ])
+            from brain import memory as _mem
+            history = _mem.recent_exchanges(10)
+            _mem.log_exchange("user", message)
+        except Exception:
+            history = []
+        try:
+            reply = llama_chat(
+                [{"role": "system", "content": SYSTEM_PROMPT}]
+                + history
+                + [{"role": "user", "content": message}]
+            )
         except RuntimeError as e:
             self._json({"ok": False, "error": str(e)}, 502)
             return
+        try:
+            from brain import memory as _mem2
+            _mem2.log_exchange("her", reply)
+            _mem2.prune_exchanges(500)
+        except Exception:
+            pass
         self._json({"ok": True, "reply": reply})
 
     def do_OPTIONS(self):

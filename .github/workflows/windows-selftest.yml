@@ -70,7 +70,7 @@ jobs:
           }
           "INSTALLER_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: A2 silent install (/S) + assert install dir
+      - name: A2 silent install (/S) + locate installed app
         run: |
           Write-Host "silent install: $env:INSTALLER_EXE /S"
           $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
@@ -80,20 +80,29 @@ jobs:
             Write-Error "SELFTEST-RED: installer process did not exit in 600s"; exit 1
           }
           Write-Host "installer exited with code $($p.ExitCode)"
-          $dir = "C:\Program Files\GENESIS Final"
-          $ok = $false
-          for ($i = 0; $i -lt 18; $i++) {
-            if (Test-Path (Join-Path $dir "GENESIS Final.exe")) { $ok = $true; break }
-            Start-Sleep -Seconds 10
+          # Honest search: Tauri NSIS default install dir varies with
+          # installMode (per-machine vs per-user). Search everywhere likely.
+          $roots = @("C:\Program Files", "C:\Program Files (x86)", $env:LOCALAPPDATA, $env:ProgramData)
+          $found = $null
+          for ($pass = 1; $pass -le 2 -and -not $found; $pass++) {
+            Write-Host "search pass $pass ..."
+            foreach ($r in $roots) {
+              $f = Get-ChildItem $r -Recurse -File -Filter "GENESIS Final.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($f) { $found = $f; break }
+            }
+            if (-not $found) { Start-Sleep -Seconds 30 }
           }
-          if (-not $ok) {
-            Write-Host "C:\Program Files contents:"
-            Get-ChildItem "C:\Program Files" -Directory | Select-Object Name | Write-Host
-            Write-Error "SELFTEST-RED: installed exe missing after silent install"; exit 1
+          if (-not $found) {
+            Write-Host "searched roots: $($roots -join ', ')"
+            foreach ($hive in @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")) {
+              Write-Host "uninstall registry ($hive):"
+              Get-ChildItem $hive -ErrorAction SilentlyContinue |
+                Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*GENESIS*" } |
+                Select-Object DisplayName, InstallLocation | Write-Host
+            }
+            Write-Error "SELFTEST-RED: GENESIS Final.exe not found anywhere after silent install (exit 0)"; exit 1
           }
-          $un = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*GENESIS*" }
-          if ($un) { Write-Host "uninstall entry: $($un.DisplayName)" } else { Write-Host "NOTE: no uninstall registry entry found" }
+          $dir = Split-Path $found.FullName -Parent
           Write-Host "A2 PASS: installed at $dir"
           "INSTALL_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
 

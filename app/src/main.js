@@ -151,7 +151,27 @@ function onItemTap(cat, label, status) {
   showToast(label + ' — با ساخته شدن پل مغز وصل میشه');
 }
 
-/* ---------------- chat (honest stub until bridge) ---------------- */
+/* ---------------- chat (brain service, localhost) ---------------- */
+const BRAIN_URL = 'http://127.0.0.1:17369';
+
+async function brainHealthy() {
+  try {
+    const r = await fetch(BRAIN_URL + '/health', { signal: AbortSignal.timeout(3000) });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+async function askBrain(text) {
+  const r = await fetch(BRAIN_URL + '/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text }),
+    signal: AbortSignal.timeout(180000)
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'brain error');
+  return j.reply;
+}
 const chatLog = document.getElementById('chatLog');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -164,16 +184,23 @@ function addMsg(text, who) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function sendChat() {
+async function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
   addMsg(text, 'me');
   chatInput.value = '';
   setAvatarState('working');
-  setTimeout(function () {
-    addMsg('گرفتم پدر. مغزم (پل ستون ۲) هنوز داره ساخته میشه — به‌زودی جواب واقعی میدم.', 'her');
-    setAvatarState('idle');
-  }, 1200);
+  try {
+    if (!(await brainHealthy())) {
+      addMsg('مغزم داره گرم میشه پدر (مدل داره لود میشه) — چند لحظه‌ی دیگه دوباره بگو.', 'her');
+    } else {
+      const reply = await askBrain(text);
+      addMsg(reply, 'her');
+    }
+  } catch (e) {
+    addMsg('یه مشکلی پیش اومد پدر — مغزم جواب نداد. دوباره امتحان کن.', 'her');
+  }
+  setAvatarState('idle');
 }
 sendBtn.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', function (e) {

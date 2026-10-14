@@ -55,6 +55,12 @@ jobs:
       - name: Fetch local model + llama-server (pinned SHA-256)
         run: python installer/fetch_model.py
 
+      - name: Fetch portable Python (pinned, hash-verified)
+        run: python installer/fetch_python.py
+
+      - name: Stage brain (one-code) into resources
+        run: python installer/stage_brain.py
+
       - name: Tauri build (NSIS)
         uses: tauri-apps/tauri-action@v0
         env:

@@ -6,6 +6,7 @@ sidecar. Fails loudly on any error — never a silent fake.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,22 @@ def main() -> int:
         return 1
     print(f"CHROMIUM_EXE={exe}")
     Path("chromium_path.txt").write_text(exe, encoding="utf-8")
+    # Stage a portable copy INSIDE the installer resources.
+    # exe = .../chromium-XXXX/chrome-win/chrome.exe ; copy the chrome-win dir.
+    repo_root = Path(__file__).resolve().parents[1]
+    dest = repo_root / "app" / "src-tauri" / "resources" / "chromium"
+    chrome_win = exe_path.parent  # the chrome-win directory
+    if not (dest / "chrome.exe").exists():
+        print(f"staging portable chromium -> {dest}", flush=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(chrome_win, dest, ignore=shutil.ignore_patterns("*.pdb"))
+        got = dest / "chrome.exe"
+        if not got.exists():
+            print(f"FATAL: chrome.exe missing after staging: {got}")
+            return 1
+        print(f"portable chromium staged ({sum(f.stat().st_size for f in dest.rglob('*') if f.is_file())} bytes)")
+    else:
+        print(f"portable chromium cached: {dest}")
     return 0
 
 

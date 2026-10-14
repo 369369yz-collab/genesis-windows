@@ -2,7 +2,7 @@
 
 Pins come from genesis_onecode/brain/pins.json (single source of truth):
 - Qwen3-8B-Q4_K_M.gguf @ pinned HF commit, SHA-256 verified after download.
-- llama.cpp release b11583 (Windows CPU build) -> llama-server.exe.
+- llama.cpp release b11583 (Windows Vulkan build) -> llama-server.exe.
 
 Any hash mismatch => hard failure. Nothing unverified ships.
 """
@@ -64,8 +64,10 @@ def fetch_llama_server(out_dir: Path) -> Path:
         print(f"llama-server cached: {dest}")
         return dest
     tag = pin["tag"]
+    # Vulkan build: GPU acceleration on any modern NVIDIA/AMD/Intel GPU
+    # (incl. RTX 50-series Blackwell, where versioned CUDA builds lag).
     url = (f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/"
-           f"llama-{tag}-bin-win-cpu-x64.zip")
+           f"llama-{tag}-bin-win-vulkan-x64.zip")
     zpath = out_dir / "llama.zip"
     download(url, zpath)
     with zipfile.ZipFile(zpath) as z:
@@ -82,7 +84,8 @@ def fetch_llama_server(out_dir: Path) -> Path:
 
 
 def main() -> int:
-    sidecars = REPO_ROOT / "app" / "src-tauri" / "binaries"
+    # Payloads ship INSIDE the installer as Tauri resources.
+    sidecars = REPO_ROOT / "app" / "src-tauri" / "resources"
     fetch_model(sidecars / "models")
     fetch_llama_server(sidecars)
     print("ALL SIDEEARS READY")

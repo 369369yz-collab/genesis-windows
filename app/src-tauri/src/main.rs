@@ -13,6 +13,7 @@
 //! - `preflight`: installer preflight module (WebView2, VC++, 10 GB disk,
 //!   mic, %LOCALAPPDATA% writability), Persian failure strings.
 
+mod brain;
 mod preflight;
 mod ram_guard;
 mod sidecar_supervisor;
@@ -57,7 +58,11 @@ fn preflight_report() -> Vec<preflight::PreflightCheck> {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![ram_status, preflight_report])
+        .invoke_handler(tauri::generate_handler![
+            ram_status,
+            preflight_report,
+            brain::brain_status
+        ])
         .setup(|app| {
             // --- W1 RAM budget guard: hard cap first, then the boot check.
             if let Err(e) = ram_guard::enforce_hard_cap() {
@@ -80,6 +85,22 @@ fn main() {
                     ram.free_bytes.unwrap_or(0)
                 );
             }
+
+            // --- Brain boot: model hash re-verify -> llama-server (GPU) ->
+            // brain service. Runs on a background thread; the face stays
+            // responsive while the brain warms up.
+            let launcher = std::sync::Arc::new(std::sync::Mutex::new(brain::BrainLauncher::new()));
+            app.manage(launcher.clone());
+            app.manage(launcher.lock().unwrap().status_handle());
+            let boot_launcher = launcher.clone();
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Ok(mut l) = boot_launcher.lock() {
+                    l.boot(&app_handle);
+                }
+                // Thread ends; the launcher lives on in Tauri state and its
+                // Drop kills llama-server + brain service at app teardown.
+            });
 
             // --- Voice sidecar supervisor (whisper/Piper): the voice builder
             // registers its backends here; the reaper unloads 60 s-idle ones.

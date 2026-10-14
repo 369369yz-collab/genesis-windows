@@ -234,7 +234,8 @@ jobs:
           if ($env:CHROME_EXE) { $env:GENESIS_CHROMIUM_EXE = $env:CHROME_EXE }
           $stubP = Start-Process python -ArgumentList "`"$work\stub_llama.py`"" -PassThru
           $svcP = Start-Process $env:PORTABLE_PY -ArgumentList "`"$env:BRAIN_SERVICE`"" -PassThru
-          "STUB_PID=$($stubP.Id);SVC_PID=$($svcP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "STUB_PID=$($stubP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SVC_PID=$($svcP.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
           $up = $false
           for ($i=0; $i -lt 12; $i++) {
             try { $r = Invoke-RestMethod "http://127.0.0.1:17369/health" -TimeoutSec 5; if ($r.ok) { $up=$true; break } } catch {}
@@ -263,7 +264,8 @@ jobs:
           if ("$txt" -notlike "*Example Domain*") { Blog "B7" "RED: browser read text mismatch"; Write-Error "BIRTH-RED: browser read"; exit 1 }
           $cl = Invoke-RestMethod "$B/browser/close" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{lease_id=$lease} | ConvertTo-Json)
           if (-not $cl.ok) { Blog "B7" "RED: browser close failed"; Write-Error "BIRTH-RED: browser close"; exit 1 }
-          $bad = Invoke-RestMethod "$B/browser/open" -Method POST -TimeoutSec 30 -ContentType "application/json" -Body (@{lease_id="br-nope";url="https://example.com"} | ConvertTo-Json)
+          $bad = Invoke-RestMethod "$B/browser/open" -Method POST -TimeoutSec 30 -SkipHttpErrorCheck -StatusCodeVariable badCode -ContentType "application/json" -Body (@{lease_id="br-nope";url="https://example.com"} | ConvertTo-Json)
+          Blog "B7" "bad-lease probe: HTTP $badCode, ok=$($bad.ok)"
           if ($bad.ok) { Blog "B7" "RED: bad lease faked ok"; Write-Error "BIRTH-RED: bad-lease honesty"; exit 1 }
           Blog "B7" "PASS: governor e2e status/lease/open/read/close + bad-lease honesty."
 

@@ -1,1 +1,5 @@
 __pycache__/
+app/dist/
+app/node_modules/
+app/src-tauri/target/
+*.log

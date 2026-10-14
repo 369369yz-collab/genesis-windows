@@ -54,12 +54,12 @@ jobs:
 
       - name: A1 verify installer SHA-256 (fail-closed)
         run: |
-          $exe = Get-ChildItem installer_dl\*.exe | Select-Object -First 1
+          $exe = Get-ChildItem installer_dl -Recurse -File -Filter "*.exe" | Select-Object -First 1
           if (-not $exe) { Write-Error "SELFTEST-RED: no installer exe in artifact"; exit 1 }
           $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
           Write-Host "installer: $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB)"
           Write-Host "actual   : $actual"
-          $shaFile = Get-ChildItem installer_dl\*sha256* | Select-Object -First 1
+          $shaFile = Get-ChildItem installer_dl -Recurse -File -Filter "*sha256*" | Select-Object -First 1
           if ($shaFile) {
             $expected = (Get-Content $shaFile.FullName -Raw).Split()[0].Trim().ToUpper()
             Write-Host "expected : $expected"

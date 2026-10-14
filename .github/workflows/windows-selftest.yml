@@ -212,7 +212,7 @@ jobs:
               s,b = call("POST","/browser/read",{"lease_id":lease}, timeout=90)
               txt = (b.get("data") or "")
               if isinstance(txt, dict): txt = json.dumps(txt)
-              check("browser_read_text", s==200 and "Example Domain" in str(txt), (s,str(txt)[:160]))
+              check("browser_read_text", s==200 and "Example Domain" in str(txt), (s,b))
               s,b = call("POST","/browser/close",{"lease_id":lease})
               check("browser_close", s==200 and b.get("ok") is True, (s,b))
           # 6 contract: bad lease must NOT fake ok

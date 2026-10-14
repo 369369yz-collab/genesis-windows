@@ -20,7 +20,7 @@ mod sidecar_supervisor;
 mod station;
 mod voice;
 
-use sidecar_supervisor::SidecarSupervisor;
+use sidecar_supervisor::{SidecarBackend, SidecarSupervisor};
 use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},

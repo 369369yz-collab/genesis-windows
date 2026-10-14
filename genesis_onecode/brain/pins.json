@@ -1,0 +1,32 @@
+{
+  "llama_cpp": {
+    "commit_sha": "98801578818b26d833a1fe244870d64b0c34bb46",
+    "license": "MIT",
+    "repo": "https://github.com/ggml-org/llama.cpp",
+    "tag": "b11583",
+    "verified_at": "2026-10-13T18:30:00+03:30",
+    "verify_method": "GitHub releases API /repos/ggml-org/llama.cpp/releases/tags/b11583 → target_commitish"
+  },
+  "local_llm": {
+    "boot_rule": "W14: SHA-256 of the GGUF is re-checked (chunked) at install AND every boot; mismatch → refuse load, Persian notice",
+    "forbidden_models": [
+      "Qwen3.8+ (any size/quant) — restrictive license, NEVER substitute",
+      "any model whose license is not Apache-2.0/MIT-compatible with zero-spend"
+    ],
+    "hf_commit": "7c41481f57cb95916b40956ab2f0b139b296d974",
+    "hf_repo": "Qwen/Qwen3-8B-GGUF",
+    "license": "Apache-2.0",
+    "license_source": "https://huggingface.co/api/models/Qwen/Qwen3-8B-GGUF (cardData.license)",
+    "name": "Qwen3-8B-Q4_K_M.gguf",
+    "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+    "sha256_verified_at": "2026-10-13T18:30:00+03:30",
+    "sha256_verify_method": "sha256sum of local file + match against HF X-Linked-ETag at pinned commit + byte-identical 16-byte GGUF header (magic GGUF, v3, 399 tensors) fetched by range request from huggingface.co resolve URL",
+    "size_bytes": 5027783488
+  },
+  "purpose": "Reproducibility pins for the GENESIS sovereign local core (formula §2 row 7, W7/W14).",
+  "sidecar_contract": {
+    "bind": "127.0.0.1 only — never 0.0.0.0 (W13)",
+    "genesis_sidecar_port": 8291,
+    "llama_server_port": 8181
+  }
+}

@@ -22,6 +22,32 @@
             step('screenshot ' + file + ' non-blank', st.size > 15000 && sd > 4.0,
                  'bytes=' + st.size + ' sd=' + sd.toFixed(1));
           }
+          // H9pre: wait for the brain to be ready BEFORE sending chat.
+          // brain.rs boot order: model download+verify -> llama-server spawn
+          // -> wait /health. Typing while the model is still downloading makes
+          // chat_send fail-closed (honest error bubble) and no real reply can
+          // ever appear -- that is what killed run 38752043151 (600s timeout).
+          async function waitForBrain(timeoutMs) {
+            const http = require('http');
+            const t0 = Date.now();
+            for (;;) {
+              const ok = await new Promise(function (res) {
+                const req = http.get('http://127.0.0.1:8080/health', function (r) {
+                  r.resume();
+                  res(r.statusCode === 200);
+                });
+                req.on('error', function () { res(false); });
+                req.setTimeout(5000, function () { req.destroy(); res(false); });
+              });
+              if (ok) { console.log('brain ready: llama-server /health 200'); return; }
+              const elMin = ((Date.now() - t0) / 60000).toFixed(1);
+              if (Date.now() - t0 > timeoutMs) {
+                throw new Error('H9pre: brain not ready in ' + (timeoutMs / 60000) + ' min (llama-server /health never 200)');
+              }
+              console.log('waiting for brain... ' + elMin + ' min elapsed');
+              await new Promise(function (r) { setTimeout(r, 15000); });
+            }
+          }
           (async () => {
             let browser = null;
             for (let i = 0; i < 30 && !browser; i++) {
@@ -70,6 +96,11 @@
               }
             }
             step('all pill buttons exercised', true);
+
+            // wait for the brain (model download+verify+load) before chatting;
+            // without this, chat_send fails closed while the model downloads
+            await waitForBrain(1800000);
+            step('brain ready (llama-server /health 200)', true);
 
             // type + Enter
             const msg1 = 'تست human-flow 123';

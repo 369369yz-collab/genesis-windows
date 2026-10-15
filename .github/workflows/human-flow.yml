@@ -108,6 +108,11 @@ jobs:
           # WebView2 honors this env var in the child process: opens a CDP
           # debugging port so Playwright can drive the REAL app window.
           $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          # GitHub-hosted runners have NO GPU; the bundled llama-server is a
+          # Vulkan build and --n-gpu-layers 99 (the YZ-PC default) never
+          # becomes healthy there (HUMANFLOW-RED 2026-10-15, runs
+          # 38722204009/38723449675). Force CPU-only model load on the runner.
+          $env:GENESIS_N_GPU_LAYERS = "0"
           Write-Host "launching: $env:MAIN_EXE"
           $app = Start-Process $env:MAIN_EXE -PassThru
           "HF_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append

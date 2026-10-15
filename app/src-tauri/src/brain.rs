@@ -31,6 +31,8 @@ const BRAIN_PORT: u16 = 17369;
 const MODEL_SHA256: &str =
     "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785";
 /// Full GPU offload: 8B Q4_K_M (~4.9 GiB) fits the RTX 5070 12 GB comfortably.
+/// This is the DEFAULT for --n-gpu-layers; the GENESIS_N_GPU_LAYERS env var
+/// overrides it at runtime (0 = CPU-only, for GPU-less machines/CI runners).
 const N_GPU_LAYERS: &str = "99";
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -361,8 +363,34 @@ impl BrainLauncher {
         };
         self.status.lock().unwrap().model_path = model.to_string_lossy().to_string();
 
-        // 2. llama-server with full GPU offload.
-        self.blog(&format!("spawning llama-server: {} -m <model>", llama_exe.display()));
+        // 2. llama-server. GPU offload layers are configurable via the
+        // GENESIS_N_GPU_LAYERS env var (default 99 = full offload).
+        // GPU-less machines (CI runners, VMs) set it to 0 so the model
+        // loads on CPU instead of never becoming healthy (HUMANFLOW-RED
+        // 2026-10-15: --n-gpu-layers 99 on a runner with no GPU failed
+        // every human-flow run at H6). stderr is persisted for forensics.
+        let n_gpu_layers = std::env::var("GENESIS_N_GPU_LAYERS")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| N_GPU_LAYERS.to_string());
+        self.blog(&format!(
+            "spawning llama-server: {} -m <model> --n-gpu-layers {}",
+            llama_exe.display(),
+            n_gpu_layers
+        ));
+        let llama_err_log = data_dir.join("llama-server.err.log");
+        let llama_err: Stdio = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&llama_err_log)
+            .map(Stdio::from)
+            .unwrap_or_else(|e| {
+                self.blog(&format!(
+                    "warn: cannot open {}: {e} — llama stderr discarded",
+                    llama_err_log.display()
+                ));
+                Stdio::null()
+            });
         let mut llama = match Command::new(&llama_exe)
             .args([
                 "-m",
@@ -370,12 +398,12 @@ impl BrainLauncher {
                 "--port",
                 &LLAMA_PORT.to_string(),
                 "--n-gpu-layers",
-                N_GPU_LAYERS,
+                &n_gpu_layers,
                 "--host",
                 "127.0.0.1",
             ])
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(llama_err)
             .spawn()
         {
             Ok(c) => c,

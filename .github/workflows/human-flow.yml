@@ -124,6 +124,23 @@ jobs:
           if (-not $ok) { Write-Error "HUMANFLOW-RED: CDP endpoint never answered in 180s — app window did not render"; exit 1 }
           Write-Host "H6 PASS: webview rendered, CDP reachable"
 
+      - name: H6b forensics (only if webview never rendered)
+        if: failure()
+        run: |
+          Write-Host "== FORENSICS: CDP never answered =="
+          $p = Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue
+          if ($p) {
+            $p | Select-Object Id, MainWindowHandle, MainWindowTitle, Responding | Format-Table -AutoSize | Out-String | Write-Host
+          } else { Write-Host "genesis-final process NOT FOUND (exited)" }
+          Write-Host "== webview2/edge child processes =="
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*webview*" -or $_.Name -like "*msedge*" } | Select-Object Name, Id | Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "== tcp listeners on 9222 =="
+          $l = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue | Select-Object LocalAddress, State, OwningProcess
+          if ($l) { $l | Format-Table -AutoSize | Out-String | Write-Host } else { Write-Host "(nothing listening on 9222)" }
+          $bootLog = Join-Path $env:LOCALAPPDATA "com.genesis.final\boot.log"
+          if (Test-Path $bootLog) { Write-Host "== boot.log tail =="; Get-Content $bootLog -Tail 40 | Write-Host }
+          else { Write-Host "no boot.log at $bootLog" }
+
       - name: H7 drive the app (click / type / Enter / screenshots)
         env:
           HF_OUT: ${{ env.HF_WORK }}\shots

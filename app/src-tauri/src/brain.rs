@@ -116,7 +116,9 @@ impl BrainLauncher {
         let mut file =
             std::fs::File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
         let mut hasher = Sha256::new();
-        let mut buf = [0u8; 8 * 1024 * 1024];
+        // HEAP buffer, not stack: this runs on a spawned thread with a 2 MiB
+        // stack; an 8 MiB stack array = instant 0xC00000FD (2026-10-15).
+        let mut buf = vec![0u8; 8 * 1024 * 1024];
         loop {
             let n = file
                 .read(&mut buf)

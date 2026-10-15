@@ -39,7 +39,8 @@
       "nsis"
     ],
     "resources": [
-      "resources/llama-server.exe",
+      "resources/llama-server-vulkan.exe",
+      "resources/llama-server-cpu.exe",
       "resources/python/",
       "resources/brain/",
       "resources/chromium/"

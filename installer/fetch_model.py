@@ -57,30 +57,43 @@ def fetch_model(out_dir: Path) -> Path:
 
 
 def fetch_llama_server(out_dir: Path) -> Path:
+    # Dual sidecar (HUMANFLOW-RED 2026-10-15, run 38769194892): the Vulkan
+    # build cannot run where the Vulkan loader is absent (GitHub runners:
+    # no GPU, no vulkan-1.dll — it hung 600s twice with empty stderr and
+    # /health never 200). The app picks the right build at boot and falls
+    # back to the other one, so both must ship.
     pin = PINS["llama_cpp"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / "llama-server.exe"
-    if dest.exists():
-        print(f"llama-server cached: {dest}")
-        return dest
     tag = pin["tag"]
-    # Vulkan build: GPU acceleration on any modern NVIDIA/AMD/Intel GPU
-    # (incl. RTX 50-series Blackwell, where versioned CUDA builds lag).
-    url = (f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/"
-           f"llama-{tag}-bin-win-vulkan-x64.zip")
-    zpath = out_dir / "llama.zip"
-    download(url, zpath)
-    with zipfile.ZipFile(zpath) as z:
-        for name in z.namelist():
-            if name.lower().endswith("llama-server.exe"):
-                data = z.read(name)
-                dest.write_bytes(data)
-                break
-    zpath.unlink(missing_ok=True)
-    if not dest.exists():
-        raise SystemExit("FATAL: llama-server.exe not found in llama.cpp release zip")
-    print(f"llama-server OK: {dest} ({dest.stat().st_size} bytes)")
-    return dest
+    builds = [
+        # Vulkan build: GPU acceleration on any modern NVIDIA/AMD/Intel GPU
+        # (incl. RTX 50-series Blackwell, where versioned CUDA builds lag).
+        ("vulkan", f"llama-{tag}-bin-win-vulkan-x64.zip"),
+        # CPU build: runs everywhere, incl. GPU-less CI runners / VMs.
+        ("cpu", f"llama-{tag}-bin-win-cpu-x64.zip"),
+    ]
+    first = None
+    for flavor, zipname in builds:
+        dest = out_dir / f"llama-server-{flavor}.exe"
+        if dest.exists():
+            print(f"llama-server-{flavor} cached: {dest}")
+        else:
+            url = (f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/"
+                   f"{zipname}")
+            zpath = out_dir / f"llama-{flavor}.zip"
+            download(url, zpath)
+            with zipfile.ZipFile(zpath) as z:
+                for name in z.namelist():
+                    if name.lower().endswith("llama-server.exe"):
+                        dest.write_bytes(z.read(name))
+                        break
+            zpath.unlink(missing_ok=True)
+            if not dest.exists():
+                raise SystemExit(f"FATAL: llama-server.exe not found in {zipname}")
+            print(f"llama-server-{flavor} OK: {dest} ({dest.stat().st_size} bytes)")
+        if first is None:
+            first = dest
+    return first
 
 
 def main() -> int:

@@ -1,7 +1,8 @@
 //! Brain launcher — starts the local model server + brain service at boot.
 //!
 //! GENESIS Full ships these inside the installer (Tauri resources):
-//!   resources/llama-server.exe          (llama.cpp Vulkan build, pinned)
+//!   resources/llama-server-vulkan.exe   (llama.cpp Vulkan build, pinned)
+//!   resources/llama-server-cpu.exe      (llama.cpp CPU build, pinned)
 //!   resources/python/python.exe         (portable CPython, no system Python)
 //!   resources/brain/genesis_onecode/    (the brain; incl. model_manifest.json)
 //!   resources/chromium/chrome.exe       (portable Chromium for the governor)
@@ -327,6 +328,14 @@ impl BrainLauncher {
         res_dir.join("resources").join(rel)
     }
 
+    /// True when the Vulkan loader exists on this Windows machine.
+    /// The Vulkan-linked llama-server cannot run without it (HUMANFLOW-RED
+    /// 2026-10-15, run 38769194892: on GPU-less GitHub runners the Vulkan
+    /// build hung 600s twice with empty stderr and /health never 200).
+    fn vulkan_present() -> bool {
+        Path::new(r"C:\Windows\System32\vulkan-1.dll").exists()
+    }
+
     /// Boot the whole brain. Called once from setup() on a background thread.
     pub fn boot(&mut self, app: &AppHandle) {
         let res_dir: PathBuf = match app.path().resource_dir() {
@@ -350,7 +359,8 @@ impl BrainLauncher {
         self.boot_log = data_dir.join("boot.log");
         self.blog(&format!("boot start; res_dir={} data_dir={}",
                            res_dir.display(), data_dir.display()));
-        let llama_exe = Self::resource(&res_dir, "llama-server.exe");
+        let llama_vulkan_exe = Self::resource(&res_dir, "llama-server-vulkan.exe");
+        let llama_cpu_exe = Self::resource(&res_dir, "llama-server-cpu.exe");
         let python_exe = Self::resource(&res_dir, "python/python.exe");
         let brain_dir = Self::resource(&res_dir, "brain/genesis_onecode");
         let service_py = brain_dir.join("service.py");
@@ -375,7 +385,8 @@ impl BrainLauncher {
         }
 
         for (label, p) in [
-            ("llama-server.exe", &llama_exe),
+            ("llama-server-vulkan.exe", &llama_vulkan_exe),
+            ("llama-server-cpu.exe", &llama_cpu_exe),
             ("python.exe", &python_exe),
             ("service.py", &service_py),
             ("model_manifest.json", &manifest),
@@ -397,22 +408,34 @@ impl BrainLauncher {
         };
         self.status.lock().unwrap().model_path = model.to_string_lossy().to_string();
 
-        // 2. llama-server. GPU offload layers are configurable via the
-        // GENESIS_N_GPU_LAYERS env var (default 99 = full offload).
-        // GPU-less machines (CI runners, VMs) set it to 0 so the model
-        // loads on CPU instead of never becoming healthy (HUMANFLOW-RED
-        // 2026-10-15: --n-gpu-layers 99 on a runner with no GPU failed
-        // every human-flow run at H6). stderr is persisted for forensics.
-        let n_gpu_layers = std::env::var("GENESIS_N_GPU_LAYERS")
+        // 2. llama-server — dual sidecar. GPU offload layers are configurable
+        // via the GENESIS_N_GPU_LAYERS env var (default 99 = full offload).
+        // The Vulkan build is preferred where the Vulkan loader exists
+        // (GPU machines); the CPU build is preferred elsewhere (CI runners,
+        // VMs). HUMANFLOW-RED 2026-10-15 (run 38769194892): the Vulkan
+        // build hung 600s twice with empty stderr on a GPU-less runner and
+        // /health never 200 — it cannot run without vulkan-1.dll. If the
+        // first-choice build fails all its attempts, the other build is
+        // tried before boot gives up (fail-closed preserved).
+        let gpu_layers = std::env::var("GENESIS_N_GPU_LAYERS")
             .ok()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| N_GPU_LAYERS.to_string());
-        self.blog(&format!(
-            "llama-server spawn plan: {} -m <model> --n-gpu-layers {} (attempts={LLAMA_SPAWN_ATTEMPTS}, health budget={}s)",
-            llama_exe.display(),
-            n_gpu_layers,
-            LLAMA_HEALTH_BUDGET.as_secs(),
-        ));
+        let vulkan_first = Self::vulkan_present();
+        self.blog(&format!("vulkan runtime present: {vulkan_first}"));
+        // (flavor label, binary, --n-gpu-layers). The CPU build always gets
+        // 0 — it has no GPU backends compiled in.
+        let candidates: Vec<(String, PathBuf, String)> = if vulkan_first {
+            vec![
+                ("vulkan".to_string(), llama_vulkan_exe.clone(), gpu_layers.clone()),
+                ("cpu".to_string(), llama_cpu_exe.clone(), "0".to_string()),
+            ]
+        } else {
+            vec![
+                ("cpu".to_string(), llama_cpu_exe.clone(), "0".to_string()),
+                ("vulkan".to_string(), llama_vulkan_exe.clone(), gpu_layers.clone()),
+            ]
+        };
         let llama_err_log = data_dir.join("llama-server.err.log");
         let health_url = format!("http://127.0.0.1:{LLAMA_PORT}/health");
         // Retry loop: a slow CPU model load on a shared runner must not doom
@@ -421,78 +444,92 @@ impl BrainLauncher {
         // healthy-but-slow llama-server and /health stayed dark for the
         // entire 30-min driver wait).
         let mut last_err = String::new();
-        let mut attempt: u32 = 0;
         let mut llama_child: Option<Child> = None;
-        while attempt < LLAMA_SPAWN_ATTEMPTS && llama_child.is_none() {
-            attempt += 1;
-            let llama_err: Stdio = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&llama_err_log)
-                .map(Stdio::from)
-                .unwrap_or_else(|e| {
-                    self.blog(&format!(
-                        "warn: cannot open {}: {e} — llama stderr discarded",
-                        llama_err_log.display()
-                    ));
-                    Stdio::null()
-                });
-            self.blog(&format!("spawning llama-server (attempt {attempt}/{LLAMA_SPAWN_ATTEMPTS})"));
-            let mut llama = match Command::new(&llama_exe)
-                .args([
-                    "-m",
-                    &model.to_string_lossy(),
-                    "--port",
-                    &LLAMA_PORT.to_string(),
-                    "--n-gpu-layers",
-                    &n_gpu_layers,
-                    "--host",
-                    "127.0.0.1",
-                ])
-                .stdout(Stdio::null())
-                .stderr(llama_err)
-                .spawn()
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    last_err = format!("llama-server spawn failed: {e}");
+        for (flavor, llama_exe, n_gpu_layers) in &candidates {
+            if llama_child.is_some() {
+                break;
+            }
+            self.blog(&format!(
+                "llama-server ({flavor}) spawn plan: {} -m <model> --n-gpu-layers {} (attempts={LLAMA_SPAWN_ATTEMPTS}, health budget={}s)",
+                llama_exe.display(),
+                n_gpu_layers,
+                LLAMA_HEALTH_BUDGET.as_secs(),
+            ));
+            let mut attempt: u32 = 0;
+            while attempt < LLAMA_SPAWN_ATTEMPTS && llama_child.is_none() {
+                attempt += 1;
+                let llama_err: Stdio = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&llama_err_log)
+                    .map(Stdio::from)
+                    .unwrap_or_else(|e| {
+                        self.blog(&format!(
+                            "warn: cannot open {}: {e} — llama stderr discarded",
+                            llama_err_log.display()
+                        ));
+                        Stdio::null()
+                    });
+                self.blog(&format!("spawning llama-server ({flavor}) (attempt {attempt}/{LLAMA_SPAWN_ATTEMPTS})"));
+                let mut llama = match Command::new(llama_exe)
+                    .args([
+                        "-m",
+                        &model.to_string_lossy(),
+                        "--port",
+                        &LLAMA_PORT.to_string(),
+                        "--n-gpu-layers",
+                        n_gpu_layers,
+                        "--host",
+                        "127.0.0.1",
+                    ])
+                    .stdout(Stdio::null())
+                    .stderr(llama_err)
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        last_err = format!("llama-server ({flavor}) spawn failed: {e}");
+                        self.blog(&format!("attempt {attempt}: {last_err}"));
+                        continue;
+                    }
+                };
+                std::thread::sleep(Duration::from_secs(3));
+                if let Ok(Some(code)) = llama.try_wait() {
+                    last_err = format!("llama-server ({flavor}) exited immediately (code {code})");
                     self.blog(&format!("attempt {attempt}: {last_err}"));
+                    Self::dump_llama_stderr_tail(&llama_err_log, self);
                     continue;
                 }
-            };
-            std::thread::sleep(Duration::from_secs(3));
-            if let Ok(Some(code)) = llama.try_wait() {
-                last_err = format!("llama-server exited immediately (code {code})");
-                self.blog(&format!("attempt {attempt}: {last_err}"));
-                Self::dump_llama_stderr_tail(&llama_err_log, self);
-                continue;
+                if Self::wait_for_health(&health_url, LLAMA_HEALTH_BUDGET) {
+                    self.status.lock().unwrap().llama_running = true;
+                    self.blog(&format!("llama-server ({flavor}) healthy (attempt {attempt})"));
+                    eprintln!("[brain] llama-server healthy on 127.0.0.1:{LLAMA_PORT}");
+                    llama_child = Some(llama);
+                } else {
+                    last_err = format!(
+                        "llama-server ({flavor}) never became healthy within {}s",
+                        LLAMA_HEALTH_BUDGET.as_secs()
+                    );
+                    self.blog(&format!(
+                        "attempt {attempt}: {last_err} — killing and retrying"
+                    ));
+                    Self::dump_llama_stderr_tail(&llama_err_log, self);
+                    let _ = llama.kill();
+                    // Give the OS a moment to release port 8080 before the next
+                    // spawn, so attempt N+1 cannot die on a bind race with the
+                    // dying child.
+                    std::thread::sleep(Duration::from_secs(5));
+                }
             }
-            if Self::wait_for_health(&health_url, LLAMA_HEALTH_BUDGET) {
-                self.status.lock().unwrap().llama_running = true;
-                self.blog(&format!("llama-server healthy (attempt {attempt})"));
-                eprintln!("[brain] llama-server healthy on 127.0.0.1:{LLAMA_PORT}");
-                llama_child = Some(llama);
-            } else {
-                last_err = format!(
-                    "llama-server never became healthy within {}s",
-                    LLAMA_HEALTH_BUDGET.as_secs()
-                );
-                self.blog(&format!(
-                    "attempt {attempt}: {last_err} — killing and retrying"
-                ));
-                Self::dump_llama_stderr_tail(&llama_err_log, self);
-                let _ = llama.kill();
-                // Give the OS a moment to release port 8080 before the next
-                // spawn, so attempt N+1 cannot die on a bind race with the
-                // dying child.
-                std::thread::sleep(Duration::from_secs(5));
+            if llama_child.is_none() {
+                self.blog(&format!("{flavor} build failed all attempts — trying next build"));
             }
         }
         let llama = match llama_child {
             Some(c) => c,
             None => {
                 self.set_error(&format!(
-                    "llama-server failed after {LLAMA_SPAWN_ATTEMPTS} attempts: {last_err}"
+                    "llama-server failed on all builds ({LLAMA_SPAWN_ATTEMPTS} attempts each): {last_err}"
                 ));
                 return;
             }

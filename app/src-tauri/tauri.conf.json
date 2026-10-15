@@ -41,6 +41,7 @@
     "resources": [
       "resources/llama-server-vulkan.exe",
       "resources/llama-server-cpu.exe",
+      "resources/*.dll",
       "resources/python/",
       "resources/brain/",
       "resources/chromium/"

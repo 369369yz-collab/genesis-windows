@@ -67,6 +67,18 @@ jobs:
           GENESIS_SKIP_MODEL: "1"
         run: python installer/fetch_model.py
 
+      - name: llama-server DLL closure gate (NEVER-AGAIN 2026-10-15 — stub exe shipped without its DLLs, brain dead on every machine)
+        shell: pwsh
+        run: |
+          $res = "app/src-tauri/resources"
+          $missing = @()
+          foreach ($f in @("llama-server-vulkan.exe","llama-server-cpu.exe","llama-server-impl.dll","llama.dll","llama-common.dll","ggml.dll","ggml-base.dll","libomp.dll","mtmd.dll")) {
+            if (-not (Test-Path (Join-Path $res $f))) { $missing += $f }
+          }
+          if (-not (Get-ChildItem $res -Filter "ggml-cpu-*.dll" -ErrorAction SilentlyContinue)) { $missing += "ggml-cpu-*.dll" }
+          if ($missing.Count -gt 0) { Write-Error ("GATE FAIL: llama-server sidecar incomplete — missing: " + ($missing -join ", ")); exit 1 }
+          Write-Host "LLAMA DLL GATE PASS: 2 exes + $((Get-ChildItem $res -Filter '*.dll').Count) DLLs staged"
+
       - name: Fetch portable Python (pinned, hash-verified)
         run: python installer/fetch_python.py
 

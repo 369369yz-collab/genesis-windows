@@ -62,6 +62,15 @@ def fetch_llama_server(out_dir: Path) -> Path:
     # no GPU, no vulkan-1.dll — it hung 600s twice with empty stderr and
     # /health never 200). The app picks the right build at boot and falls
     # back to the other one, so both must ship.
+    #
+    # CRITICAL (follow-up, same RED): llama-server.exe is a 9KB STUB that
+    # imports llama-server-impl.dll plus the ggml/llama DLL closure
+    # (verified via PE import table: llama-server-impl.dll -> llama.dll,
+    # llama-common.dll, ggml.dll, ggml-base.dll -> libomp.dll, mtmd.dll).
+    # Shipping ONLY the exe meant the installed binary died in the Windows
+    # loader on EVERY machine (no stderr, /health never up) — including
+    # YZ's PC. Every *.dll from the zips must ship NEXT TO the exes
+    # (the loader's first search dir is the exe's own directory).
     pin = PINS["llama_cpp"]
     out_dir.mkdir(parents=True, exist_ok=True)
     tag = pin["tag"]
@@ -72,10 +81,21 @@ def fetch_llama_server(out_dir: Path) -> Path:
         # CPU build: runs everywhere, incl. GPU-less CI runners / VMs.
         ("cpu", f"llama-{tag}-bin-win-cpu-x64.zip"),
     ]
+    # Import-closure DLLs the stub exe cannot start without (from objdump of
+    # the b11583 binaries). Fail-closed below if any is missing.
+    required_dlls = {
+        "llama-server-impl.dll",
+        "llama.dll",
+        "llama-common.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "libomp.dll",
+        "mtmd.dll",
+    }
     first = None
     for flavor, zipname in builds:
         dest = out_dir / f"llama-server-{flavor}.exe"
-        if dest.exists():
+        if dest.exists() and all((out_dir / d).exists() for d in required_dlls):
             print(f"llama-server-{flavor} cached: {dest}")
         else:
             url = (f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/"
@@ -84,15 +104,38 @@ def fetch_llama_server(out_dir: Path) -> Path:
             download(url, zpath)
             with zipfile.ZipFile(zpath) as z:
                 for name in z.namelist():
-                    if name.lower().endswith("llama-server.exe"):
+                    low = name.lower()
+                    leaf = Path(name).name
+                    if low.endswith("llama-server.exe"):
                         dest.write_bytes(z.read(name))
-                        break
+                    elif low.endswith(".dll"):
+                        # Both builds are the same tag/commit, so their
+                        # common DLLs are identical; keep the first copy
+                        # (vulkan zip is extracted first and is the superset —
+                        # it additionally carries ggml-vulkan.dll).
+                        target = out_dir / leaf
+                        if not target.exists():
+                            target.write_bytes(z.read(name))
             zpath.unlink(missing_ok=True)
             if not dest.exists():
                 raise SystemExit(f"FATAL: llama-server.exe not found in {zipname}")
             print(f"llama-server-{flavor} OK: {dest} ({dest.stat().st_size} bytes)")
         if first is None:
             first = dest
+    # Fail-closed: the exe alone is a dead binary. Every closure DLL plus at
+    # least one ggml-cpu-* backend must be staged, or the build stops here.
+    problems = [
+        d for d in sorted(required_dlls) if not (out_dir / d).exists()
+    ]
+    if not any(p.name.startswith("ggml-cpu-") for p in out_dir.glob("*.dll")):
+        problems.append("ggml-cpu-*.dll (no CPU backend DLL staged)")
+    if problems:
+        raise SystemExit(
+            "FATAL: llama.cpp sidecar DLL closure incomplete — "
+            "llama-server.exe cannot start without these: " + ", ".join(problems)
+        )
+    ndll = len(list(out_dir.glob("*.dll")))
+    print(f"llama-server sidecar COMPLETE: 2 exes + {ndll} DLLs in {out_dir}")
     return first
 
 

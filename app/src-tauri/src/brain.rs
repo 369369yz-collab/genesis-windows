@@ -482,6 +482,10 @@ impl BrainLauncher {
                 ));
                 Self::dump_llama_stderr_tail(&llama_err_log, self);
                 let _ = llama.kill();
+                // Give the OS a moment to release port 8080 before the next
+                // spawn, so attempt N+1 cannot die on a bind race with the
+                // dying child.
+                std::thread::sleep(Duration::from_secs(5));
             }
         }
         let llama = match llama_child {

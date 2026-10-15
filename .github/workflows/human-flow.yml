@@ -1,0 +1,168 @@
+name: GENESIS — Windows human-flow (virtual Windows)
+
+# YZ SELF-TEST BEFORE FINAL LAW: install the real installer on virtual Windows,
+# launch the REAL app, click every button, type + Enter, screenshot proof.
+# Method (reverse-engineered from production Tauri projects — see
+# reverse_eng/HUMANFLOW_GUI_DISSECTION.md): the app is driven through its
+# WebView2 CDP endpoint (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS) with Playwright.
+# No app code changes. No OS-level input injection. Fail-closed: if the webview
+# never renders, any assertion fails, or any screenshot is blank/black, the run
+# goes RED. Evidence artifact: genesis-humanflow-evidence.
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  humanflow:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: H0 checkout (driver script)
+        uses: actions/checkout@v4
+
+      - name: H1 resolve source build run
+        id: src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $runId = gh api "repos/${{ github.repository }}/actions/workflows/build-windows.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id'
+          if (-not $runId) { Write-Error "HUMANFLOW-RED: no successful build-windows run found"; exit 1 }
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "source build run: $runId"
+
+      - name: H2 download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: GENESIS-Setup-Full-windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.src.outputs.run_id }}
+          path: installer_dl
+
+      - name: H3 verify installer SHA-256 (fail-closed)
+        run: |
+          $exe = Get-ChildItem installer_dl -Recurse -File -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { Write-Error "HUMANFLOW-RED: no installer exe in artifact"; exit 1 }
+          $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          Write-Host "installer: $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB)"
+          $shaFile = Get-ChildItem installer_dl -Recurse -File -Filter "*sha256*" | Select-Object -First 1
+          if ($shaFile) {
+            $expected = (Get-Content $shaFile.FullName -Raw).Split()[0].Trim().ToUpper()
+            if ($actual -ne $expected) { Write-Error "HUMANFLOW-RED: SHA-256 MISMATCH"; exit 1 }
+            Write-Host "H3 PASS: SHA-256 match"
+          } else {
+            Write-Host "H3 BOUNDARY: no sha256 file in artifact — hash recorded only: $actual"
+          }
+          "INSTALLER_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: H4 silent install (/S) + locate installed app
+        run: |
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
+          $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          if (-not $p.HasExited) {
+            try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Write-Error "HUMANFLOW-RED: installer process did not exit in 600s"; exit 1
+          }
+          $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+          $entry = $null
+          for ($i = 0; $i -lt 12 -and -not $entry; $i++) {
+            foreach ($h in $hives) {
+              $entry = Get-ChildItem $h -ErrorAction SilentlyContinue |
+                Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $entry) { Write-Error "HUMANFLOW-RED: no GENESIS uninstall registry entry after silent install"; exit 1 }
+          $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+          $exePath = $null
+          for ($i = 0; $i -lt 12 -and -not $exePath; $i++) {
+            $exePath = Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } |
+              Select-Object -First 1
+            if (-not $exePath) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $exePath) { Write-Error "HUMANFLOW-RED: no GENESIS main exe at InstallLocation"; exit 1 }
+          Write-Host "H4 PASS: installed at $dir ($($exePath.Name))"
+          "MAIN_EXE=$($exePath.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: H5 install driver deps (playwright-core + sharp)
+        run: |
+          $w = "$env:RUNNER_TEMP\genesis_humanflow"; New-Item -ItemType Directory -Force $w | Out-Null
+          "HF_WORK=$w" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Force "$w\shots" | Out-Null
+          Set-Location $w
+          npm init -y | Out-Null
+          npm install playwright-core sharp --no-audit --no-fund
+          Write-Host "H5 PASS: driver deps installed"
+
+      - name: H6 launch app with CDP + wait for webview render
+        run: |
+          # WebView2 honors this env var in the child process: opens a CDP
+          # debugging port so Playwright can drive the REAL app window.
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          Write-Host "launching: $env:MAIN_EXE"
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "HF_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "HUMANFLOW-RED: app process exited before webview came up (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "HUMANFLOW-RED: CDP endpoint never answered in 180s — app window did not render"; exit 1 }
+          Write-Host "H6 PASS: webview rendered, CDP reachable"
+
+      - name: H7 drive the app (click / type / Enter / screenshots)
+        env:
+          HF_OUT: ${{ env.HF_WORK }}\shots
+        run: |
+          Set-Location $env:HF_WORK
+          Copy-Item "$env:GITHUB_WORKSPACE\.github\workflows\humanflow-drive.js" . -Force
+          node humanflow-drive.js
+          $v = Get-Content "$env:HF_WORK\shots\verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "HUMANFLOW-RED: verdict.json pass=false"; exit 1 }
+          Write-Host "H7 PASS: all interactions green"
+
+      - name: H8 stop app + children
+        if: always()
+        run: |
+          if ($env:HF_PID) {
+            $pid0 = [int]$env:HF_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Write-Host "stopped app pid $pid0" } catch {}
+          }
+          foreach ($n in @("llama-server")) {
+            Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "H8 DONE"
+
+      - name: H9 verdict summary
+        if: always()
+        run: |
+          $v = Get-Content "$env:HF_WORK\shots\verdict.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+          if (-not $v) { Write-Error "HUMANFLOW-RED: no verdict.json produced"; exit 1 }
+          Write-Host "== human-flow steps =="
+          foreach ($s in $v.steps) { Write-Host ("[{0}] {1} {2}" -f $(if ($s.ok) { "PASS" } else { "FAIL" }), $s.name, $s.detail) }
+          if (-not $v.pass) { Write-Error ("HUMANFLOW-RED: " + $v.error); exit 1 }
+          Write-Host "HUMANFLOW-VERDICT: PASS — install/launch/click/type/Enter/screenshots all green"
+
+      - name: Upload human-flow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-humanflow-evidence
+          path: ${{ env.HF_WORK }}\shots\

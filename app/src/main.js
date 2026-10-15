@@ -92,13 +92,36 @@ $("sendBtn").onclick = sendChat;
 chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 
 /* ---------- voice input: local whisper STT, zero cloud ---------- */
+/* IPC init — UNCONDITIONAL. Never gate on window.__TAURI__ again: Tauri v2
+   defaults withGlobalTauri=false, so the global is undefined in the packaged
+   webview and the gate left invoke null forever (RED 2026-10-16, run 38805846150).
+   The import itself fails only in a plain-browser dev env, which the catch covers. */
 var invoke = null;
 try {
-  if (window.__TAURI__) {
-    const core = await import("@tauri-apps/api/core");
-    invoke = core.invoke;
-  }
+  const core = await import("@tauri-apps/api/core");
+  invoke = core.invoke;
 } catch (e) { /* plain-browser test env: no Tauri */ }
+
+/* ---------- NEVER-AGAIN gate: Tauri IPC liveness (RED 2026-10-16) ----------
+   The runtime ALWAYS injects window.__TAURI_INTERNALS__ into a real Tauri webview
+   (dev and packaged alike), independent of withGlobalTauri. If we're inside one
+   but invoke is dead, chat is silently dead — prove liveness instead of hoping. */
+(function ipcLivenessGate() {
+  if (!window.__TAURI_INTERNALS__) return; /* plain-browser dev: nothing to gate */
+  function loud(msg) {
+    try { console.error(msg); } catch (e) {}
+    try { addErrorBubble("⚠ " + msg); } catch (e2) {}
+  }
+  if (!invoke) {
+    loud("TAURI-IPC-LIVENESS: FAIL — Tauri webview detected but invoke is null; chat cannot reach the brain. Report this bug.");
+    return;
+  }
+  invoke("ipc_ping").then(function () {
+    try { console.log("TAURI-IPC-LIVENESS: OK"); } catch (e) {}
+  }).catch(function (e) {
+    loud("TAURI-IPC-LIVENESS: FAIL — ipc_ping threw: " + (e && e.toString ? e.toString() : e));
+  });
+})();
 
 let audioCtx = null, audioStream = null, audioProc = null, audioChunks = [];
 

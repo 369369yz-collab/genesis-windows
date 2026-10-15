@@ -67,6 +67,7 @@ fn main() {
             preflight_report,
             brain::brain_status,
             chat::chat_send,
+            chat::ipc_ping,
             voice::voice_status,
             voice::voice_transcribe
         ])

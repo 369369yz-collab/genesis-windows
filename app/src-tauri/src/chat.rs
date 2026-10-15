@@ -60,6 +60,17 @@ const INFERENCE_TIMEOUT: Duration = Duration::from_secs(300);
 /// stays bounded.
 const N_PREDICT: u32 = 256;
 
+/// NEVER-AGAIN gate target (RED 2026-10-16, run 38805846150): the frontend's
+/// IPC-liveness gate calls this at startup. If this line never lands in
+/// chat.log on a real run, Tauri IPC is dead and chat cannot reach the brain —
+/// the absence of the witness IS the alarm. Fail-closed: returns Ok only when
+/// the witness line was appended.
+#[tauri::command]
+pub fn ipc_ping(app: tauri::AppHandle) -> Result<String, String> {
+    clog(&app, "ipc_ping ok — frontend IPC liveness proven");
+    Ok("pong".to_string())
+}
+
 /// Frontend command: send one chat message to the local model.
 /// Returns the model's real reply text, or a Persian error string.
 #[tauri::command]

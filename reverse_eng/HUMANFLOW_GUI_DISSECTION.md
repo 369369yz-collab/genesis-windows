@@ -87,8 +87,33 @@ Known honest limitations (documented, not hidden):
 ## 4. Design decision (final)
 
 human-flow.yml = install (proven A1/A2 steps copied from windows-selftest.yml)
-→ launch with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`
-→ poll CDP → Playwright (playwright-core + sharp, npm on the runner) drives
-clicks/types/screenshots → fail-closed verdict → upload `genesis-humanflow-evidence`.
+→ launch with WebView2 CDP enabled via HKLM policy → poll CDP → Playwright
+(playwright-core + sharp, npm on the runner) drives clicks/types/screenshots →
+fail-closed verdict → upload `genesis-humanflow-evidence`.
 No app code changes. No input injection. No fakes: if CDP never answers or any
 assertion fails, the run goes RED with the exact cause.
+
+## 5. Dry-run autopsy 2026-10-15 — why the env var alone FAILED (runs 38722204009, 38723449675)
+
+First two dry runs went RED at H6: "CDP endpoint never answered in 180s".
+Forensics (H6b) proved the app was HEALTHY: MainWindowHandle=262306 titled
+"GENESIS", Responding=True, msedgewebview2 processes running, model download
+completed — but NOTHING listened on 127.0.0.1:9222.
+
+Reverse-engineered root cause (three independent production sources):
+- wry's WebView2 binding ALWAYS sets its own default browser arguments via the
+  WebView2 API (`ICoreWebView2EnvironmentOptions::AdditionalBrowserArguments`),
+  which silently OVERRIDES (not merges with) `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`.
+  (lanternplatform/lantern, serenorg/seren-desktop)
+- WebView2 Runtime >=150 added a security hardening: for ELEVATED host processes
+  it ignores the env var, the HKCU policy, and command-line overrides entirely.
+  GitHub-hosted Windows runners run as administrator → 100% repro.
+  (tauri-apps/wry#1782; mounirlamouri/grimoire saw the same on windows-latest)
+- So the env var "could never open the CDP remote-debugging port, on this VM
+  or anywhere else" for wry/Tauri apps.
+
+Production fix (no app change): the HKLM
+`SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments` policy
+(value name = `<app>.exe`, value = `--remote-debugging-port=9222`) is honored
+even for elevated hosts (grimoire's CI fallback). Written before launch,
+removed after the run — the shipped app and its behavior are untouched.

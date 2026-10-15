@@ -105,9 +105,18 @@ jobs:
 
       - name: H6 launch app with CDP + wait for webview render
         run: |
-          # WebView2 honors this env var in the child process: opens a CDP
-          # debugging port so Playwright can drive the REAL app window.
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          # CDP enablement that actually works for wry/Tauri on elevated CI runners
+          # (reverse-engineered 2026-10-15 — see HUMANFLOW_GUI_DISSECTION.md §5):
+          #  - WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is IGNORED here: wry always
+          #    sets its own browser args via the WebView2 API (which win over the
+          #    env var), and WebView2 Runtime >=150 drops the env var entirely
+          #    for elevated hosts (GHA runners run as admin).
+          #  - The surviving channel is the HKLM AdditionalBrowserArguments policy,
+          #    honored even when elevated. Written now, removed in H8.
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          Write-Host "HKLM WebView2 policy set: genesis-final.exe -> --remote-debugging-port=9222"
           # GitHub-hosted runners have NO GPU; the bundled llama-server is a
           # Vulkan build and --n-gpu-layers 99 (the YZ-PC default) never
           # becomes healthy there (HUMANFLOW-RED 2026-10-15, runs
@@ -160,6 +169,8 @@ jobs:
       - name: H8 stop app + children
         if: always()
         run: |
+          # Remove the CI-only WebView2 debug policy (whatever happened above).
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
           if ($env:HF_PID) {
             $pid0 = [int]$env:HF_PID
             Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {

@@ -13,6 +13,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use tauri::Manager;
+
 use crate::brain::BrainStatus;
 
 /// Append one line to chat.log in the app data dir. The human-flow run

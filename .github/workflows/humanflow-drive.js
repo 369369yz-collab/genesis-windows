@@ -46,7 +46,7 @@
             step('theme button opens picker', true);
             await nonBlankShot(page, '02-theme-picker.png');
             await page.locator('#themeClose').click();
-            await page.locator('#themePicker.hidden').waitFor({ timeout: 10000 });
+            await page.locator('#themePicker').waitFor({ state: 'hidden', timeout: 10000 });
             step('theme picker closes', true);
 
             // every pill button
@@ -66,7 +66,7 @@
                 step('pill "' + label + '" opens panel', title.trim().length > 0, 'title="' + title.trim() + '"');
                 await nonBlankShot(page, '03-pill-' + i + '.png');
                 await page.locator('#panelClose').click();
-                await page.locator('#panel.hidden').waitFor({ timeout: 10000 });
+                await page.locator('#panel').waitFor({ state: 'hidden', timeout: 10000 });
               }
             }
             step('all pill buttons exercised', true);

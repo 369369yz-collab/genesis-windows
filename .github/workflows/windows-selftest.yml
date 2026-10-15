@@ -24,9 +24,7 @@ permissions:
 jobs:
   selftest:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, yz-pc]
-    # YZ 2026-10-15: GitHub free minutes exhausted (2000/2000 until Nov 1).
-    # Runs on YZ's own PC via self-hosted runner — zero minutes consumed.
+    runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:

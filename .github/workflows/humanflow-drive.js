@@ -143,8 +143,29 @@
             fs.writeFileSync(path.join(OUT, 'verdict.json'), JSON.stringify({ pass: true, steps: steps }, null, 2));
             console.log('HUMANFLOW-VERDICT: PASS');
             await browser.close();
-          })().catch(function (e) {
-            try { fs.writeFileSync(path.join(OUT || '.', 'verdict.json'), JSON.stringify({ pass: false, error: String((e && e.message) || e), steps: steps }, null, 2)); } catch (_) {}
+          })().catch(async function (e) {
+            // On failure, capture the chat DOM state: error bubbles tell us
+            // whether chat_send errored (and what it said) vs hung silently.
+            var chatState = null;
+            try {
+              chatState = {
+                errorBubbles: [],
+                herCount: 0,
+                typingVisible: false
+              };
+            } catch (_) {}
+            try {
+              var eb = page.locator('#chatLog .bubble.her.error');
+              var n = 0;
+              try { n = await eb.count(); } catch (_) {}
+              for (var i = 0; i < n; i++) {
+                try { chatState.errorBubbles.push(((await eb.nth(i).textContent()) || '').trim().slice(0, 300)); } catch (_) {}
+              }
+              try { chatState.herCount = await page.locator('#chatLog .bubble.her').count(); } catch (_) {}
+              try { chatState.typingVisible = await page.locator('#typing:not(.hidden)').count() > 0; } catch (_) {}
+              try { await page.screenshot({ path: path.join(OUT || '.', '07-chat-fail-state.png') }); } catch (_) {}
+            } catch (_) {}
+            try { fs.writeFileSync(path.join(OUT || '.', 'verdict.json'), JSON.stringify({ pass: false, error: String((e && e.message) || e), steps: steps, chatState: chatState }, null, 2)); } catch (_) {}
             console.error('HUMANFLOW-VERDICT: FAIL -- ' + ((e && e.message) || e));
             process.exit(1);
           });

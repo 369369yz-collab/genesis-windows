@@ -11,9 +11,33 @@
 //! `reverse_eng/LLAMACPP_CHAT_DISSECTION.md`.
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::brain::BrainStatus;
+
+/// Append one line to chat.log in the app data dir. The human-flow run
+/// cannot show us the DOM after the fact; this file is the decisive
+/// witness for what chat_send actually did (HUMANFLOW-RED 2026-10-15,
+/// run 38777224261: reply never arrived, zero requests hit llama-server,
+/// no way to tell error-bubble from hang from CI).
+fn clog(app: &tauri::AppHandle, line: &str) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(dir) = app.path().app_local_data_dir() {
+        let p = dir.join("chat.log");
+        let entry = format!("[{ts}] {line}\n");
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&p)
+        {
+            let _ = f.write_all(entry.as_bytes());
+        }
+    }
+}
 
 /// GENESIS identity — who she is when she answers. Single source of
 /// truth for the persona in v1 (history arrives with real memory).
@@ -38,14 +62,21 @@ const N_PREDICT: u32 = 256;
 /// Returns the model's real reply text, or a Persian error string.
 #[tauri::command]
 pub async fn chat_send(
+    app: tauri::AppHandle,
     prompt: String,
     state: tauri::State<'_, Arc<Mutex<BrainStatus>>>,
 ) -> Result<String, String> {
-    let ready = state
+    clog(&app, "chat_send invoked");
+    let (llama_running, model_verified) = state
         .lock()
-        .map(|s| s.llama_running && s.model_verified)
-        .unwrap_or(false);
-    if !ready {
+        .map(|s| (s.llama_running, s.model_verified))
+        .unwrap_or((false, false));
+    clog(
+        &app,
+        &format!("ready check: llama_running={llama_running} model_verified={model_verified}"),
+    );
+    if !(llama_running && model_verified) {
+        clog(&app, "ready check FAILED -> not-ready error");
         return Err("مغزم هنوز آماده نیست — مدل داره دانلود یا گرم می‌شه. یه کم دیگه صبر کن، پدر.".to_string());
     }
     let prompt = prompt.trim().to_string();
@@ -53,9 +84,16 @@ pub async fn chat_send(
         return Err("پیامت خالیه، پدر.".to_string());
     }
 
-    tauri::async_runtime::spawn_blocking(move || infer(prompt))
-        .await
-        .map_err(|e| format!("خطای داخلی چت: {e}"))?
+    let t0 = Instant::now();
+    clog(&app, &format!("POST {LLAMA_CHAT_URL} start"));
+    let out = tauri::async_runtime::spawn_blocking(move || infer(prompt)).await;
+    let dt = t0.elapsed().as_secs();
+    match &out {
+        Ok(Ok(_)) => clog(&app, &format!("POST done: reply ok, elapsed={dt}s")),
+        Ok(Err(e)) => clog(&app, &format!("POST done: infer error after {dt}s: {e}")),
+        Err(e) => clog(&app, &format!("POST done: join error after {dt}s: {e}")),
+    }
+    out.map_err(|e| format!("خطای داخلی چت: {e}"))?
 }
 
 fn infer(prompt: String) -> Result<String, String> {

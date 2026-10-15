@@ -201,7 +201,7 @@ jobs:
           # now on the app's own boot trace and the llama-server stderr are
           # always copied into the evidence artifact.
           $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
-          foreach ($f in @("boot.log", "llama-server.err.log")) {
+          foreach ($f in @("boot.log", "llama-server.err.log", "chat.log")) {
             $src = Join-Path $dataDir $f
             if (Test-Path $src) {
               Copy-Item $src "$env:HF_WORK\\shots\\$f" -Force

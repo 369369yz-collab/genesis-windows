@@ -73,12 +73,20 @@
 
             // type + Enter
             const msg1 = 'تست human-flow 123';
+            const STUB = 'دارم روش کار می‌کنم';
             await chatInput.fill(msg1);
             await chatInput.press('Enter');
             await page.locator('#chatLog').getByText(msg1).waitFor({ timeout: 10000 });
             step('typed message appears in chat log (Enter path)', true, '"' + msg1 + '"');
-            await page.getByText('حتماً پدر', { exact: false }).first().waitFor({ timeout: 15000 });
-            step('app reply bubble appears', true);
+            // H9a: REAL model reply (no stub). The canned text must never appear.
+            const herBefore1 = await page.locator('#chatLog .bubble.her:not(.error)').count();
+            await page.waitForFunction(
+              (n) => document.querySelectorAll('#chatLog .bubble.her:not(.error)').length > n,
+              herBefore1, { timeout: 600000 });
+            const reply1 = ((await page.locator('#chatLog .bubble.her:not(.error)').last().textContent()) || '').trim();
+            if (!reply1) throw new Error('H9a: empty model reply');
+            if (reply1.includes(STUB)) throw new Error('H9a: STUB REPLY DETECTED — canned text leaked');
+            step('real model reply received (no stub)', true, '"' + reply1.slice(0, 120) + '"');
             await nonBlankShot(page, '04-chat-enter.png');
 
             // send-button path
@@ -90,7 +98,6 @@
             await nonBlankShot(page, '05-chat-sendbtn.png');
 
             // H9: REAL model reply (no stub). The canned text must never appear.
-            const STUB = 'دارم روش کار می‌کنم';
             await page.locator('#chatLog').getByText(msg2).waitFor({ timeout: 10000 });
             const herBefore = await page.locator('#chatLog .bubble.her:not(.error)').count();
             await page.waitForFunction(

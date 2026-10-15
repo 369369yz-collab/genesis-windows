@@ -89,6 +89,19 @@
             step('send button delivers message', true, '"' + msg2 + '"');
             await nonBlankShot(page, '05-chat-sendbtn.png');
 
+            // H9: REAL model reply (no stub). The canned text must never appear.
+            const STUB = 'دارم روش کار می‌کنم';
+            await page.locator('#chatLog').getByText(msg2).waitFor({ timeout: 10000 });
+            const herBefore = await page.locator('#chatLog .bubble.her:not(.error)').count();
+            await page.waitForFunction(
+              (n) => document.querySelectorAll('#chatLog .bubble.her:not(.error)').length > n,
+              herBefore, { timeout: 600000 });
+            const replyText = ((await page.locator('#chatLog .bubble.her:not(.error)').last().textContent()) || '').trim();
+            if (!replyText) throw new Error('H9: empty model reply');
+            if (replyText.includes(STUB)) throw new Error('H9: STUB REPLY DETECTED — canned text leaked');
+            step('real model reply received (no stub)', true, '"' + replyText.slice(0, 120) + '"');
+            await nonBlankShot(page, '06-chat-reply.png');
+
             fs.writeFileSync(path.join(OUT, 'verdict.json'), JSON.stringify({ pass: true, steps: steps }, null, 2));
             console.log('HUMANFLOW-VERDICT: PASS');
             await browser.close();

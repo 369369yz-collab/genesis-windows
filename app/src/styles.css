@@ -52,6 +52,7 @@ body[data-theme="chrome-midnight"]{ --bg:#08090c; --bg2:#0e1014; --card:#101216;
 .bubble { max-width:78%; padding:10px 16px; border-radius:16px; font-size:14px; line-height:1.9; }
 .bubble.me { align-self:flex-start; background:var(--bubble); color:var(--bubble-text); }
 .bubble.her { align-self:flex-end; background:var(--accent-soft); border:1px solid var(--line); color:var(--text); }
+.bubble.her.error { border-color:#e5484d; background:rgba(229,72,77,.12); }
 .typing { font-size:12px; color:var(--dim); padding:4px 8px; }
 .input-row { display:flex; gap:8px; margin-top:10px; }
 .input-row input { flex:1; background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:999px;

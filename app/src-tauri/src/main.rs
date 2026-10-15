@@ -14,6 +14,7 @@
 //!   mic, %LOCALAPPDATA% writability), Persian failure strings.
 
 mod brain;
+mod chat;
 mod preflight;
 mod ram_guard;
 mod sidecar_supervisor;
@@ -65,6 +66,7 @@ fn main() {
             ram_status,
             preflight_report,
             brain::brain_status,
+            chat::chat_send,
             voice::voice_status,
             voice::voice_transcribe
         ])

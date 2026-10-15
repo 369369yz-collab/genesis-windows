@@ -66,16 +66,27 @@ function buildThemeGrid() {
 $("themeBtn").onclick = () => $("themePicker").classList.remove("hidden");
 $("themeClose").onclick = () => $("themePicker").classList.add("hidden");
 
-/* ---------- chat ---------- */
-function sendChat() {
+/* ---------- chat: REAL local-model inference (no canned replies) ---------- */
+function addErrorBubble(text) {
+  const d = document.createElement("div");
+  d.className = "bubble her error"; d.textContent = "⚠ " + text;
+  chatLog.appendChild(d); chatLog.scrollTop = chatLog.scrollHeight;
+}
+async function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
   addBubble(text, "me"); chatInput.value = "";
   typing.classList.remove("hidden");
-  setTimeout(() => {
+  try {
+    if (!invoke) throw new Error("no-invoke");
+    const reply = await invoke("chat_send", { prompt: text });
     typing.classList.add("hidden");
-    addBubble("حتماً پدر — دارم روش کار می‌کنم.", "her");
-  }, 1200);
+    addBubble(reply, "her");
+  } catch (e) {
+    typing.classList.add("hidden");
+    const msg = (e && e.toString && e.toString()) || "";
+    addErrorBubble(msg || "مغزم جواب نداد — یه بار دیگه امتحان کن، پدر.");
+  }
 }
 $("sendBtn").onclick = sendChat;
 chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });

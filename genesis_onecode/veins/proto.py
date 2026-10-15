@@ -18,7 +18,7 @@ import threading
 import uuid
 from pathlib import Path
 
-_WORKSPACE = Path(__file__).resolve().parents[2]
+_WORKSPACE = Path(__file__).resolve().parents[3]  # ~/workspace (genesis_final is a sibling of genesis_build)
 if str(_WORKSPACE) not in sys.path:
     sys.path.insert(0, str(_WORKSPACE))
 

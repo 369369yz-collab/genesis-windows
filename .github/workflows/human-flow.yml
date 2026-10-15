@@ -193,6 +193,22 @@ jobs:
           if (-not $v.pass) { Write-Error ("HUMANFLOW-RED: " + $v.error); exit 1 }
           Write-Host "HUMANFLOW-VERDICT: PASS — install/launch/click/type/Enter/screenshots all green"
 
+      - name: H9b collect brain forensics (always)
+        if: always()
+        run: |
+          # HUMANFLOW-RED 2026-10-15 (run 38759814918): the brain died with no
+          # boot.log evidence — the failure was undiagnosable from CI. From
+          # now on the app's own boot trace and the llama-server stderr are
+          # always copied into the evidence artifact.
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          foreach ($f in @("boot.log", "llama-server.err.log")) {
+            $src = Join-Path $dataDir $f
+            if (Test-Path $src) {
+              Copy-Item $src "$env:HF_WORK\\shots\\$f" -Force
+              Write-Host "forensics: copied $f ($((Get-Item $src).Length) bytes)"
+            } else { Write-Host "forensics: $src NOT FOUND" }
+          }
+
       - name: Upload human-flow evidence
         if: always()
         uses: actions/upload-artifact@v4

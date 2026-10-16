@@ -205,7 +205,12 @@ jobs:
             }
             try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
           }
-          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          # Sidecar exes are llama-server-vulkan.exe / llama-server-cpu.exe — their process
+          # names NEVER equal bare "llama-server", so the old exact-name kill missed
+          # orphaned sidecars and the locked exe survived uninstall (E16 RED x2).
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" } | ForEach-Object {
+            try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
+          }
           Start-Sleep -Seconds 5
           $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
           New-Item -Path $polPath -Force | Out-Null
@@ -260,7 +265,12 @@ jobs:
             }
             try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
           }
-          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          # Sidecar exes are llama-server-vulkan.exe / llama-server-cpu.exe — their process
+          # names NEVER equal bare "llama-server", so the old exact-name kill missed
+          # orphaned sidecars and the locked exe survived uninstall (E16 RED x2).
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" } | ForEach-Object {
+            try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
+          }
           Start-Sleep -Seconds 5
           $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
           New-Item -Path $polPath -Force | Out-Null
@@ -308,7 +318,12 @@ jobs:
             }
             try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
           }
-          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          # Sidecar exes are llama-server-vulkan.exe / llama-server-cpu.exe — their process
+          # names NEVER equal bare "llama-server", so the old exact-name kill missed
+          # orphaned sidecars and the locked exe survived uninstall (E16 RED x2).
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" } | ForEach-Object {
+            try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
+          }
           Start-Sleep -Seconds 5
           $un = $env:UNINSTALL_STR
           if (-not $un) { Write-Error "EXHAUST-RED: no uninstall string recorded"; exit 1 }
@@ -342,6 +357,18 @@ jobs:
           }
           if (-not $gone) { Write-Error "EXHAUST-RED: GENESIS uninstall registry entry still present 5 min after silent uninstall — real uninstaller defect"; exit 1 }
           Write-Host "E16a PASS: uninstall clean (registry entry gone)"
+          # Quiesce check: no genesis-final* or llama-server* process may hold files
+          # open when the uninstaller runs — otherwise the locked exe survives.
+          $qDeadline = (Get-Date).AddSeconds(60)
+          while ((Get-Date) -lt $qDeadline) {
+            $stray = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" -or $_.ProcessName -like "genesis-final*" })
+            if ($stray.Count -eq 0) { break }
+            foreach ($s in $stray) { try { Stop-Process -Id $s.Id -Force -ErrorAction SilentlyContinue } catch {} }
+            Start-Sleep -Seconds 5
+          }
+          $stray = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" -or $_.ProcessName -like "genesis-final*" })
+          if ($stray.Count -gt 0) { Write-Error "EXHAUST-RED: stray processes still alive before uninstall: $($stray.ProcessName -join ', ')"; exit 1 }
+          Write-Host "E16q PASS: machine quiesced (no genesis-final/llama-server processes)"
           $installDir = Join-Path $env:LOCALAPPDATA "GENESIS Final"
           $dDeadline = (Get-Date).AddMinutes(2)
           $files = -1
@@ -352,7 +379,11 @@ jobs:
             if ($files -eq 0) { break }
             Start-Sleep -Seconds 10
           }
-          if ($files -gt 0) { Write-Error "EXHAUST-RED: install dir still has $files files after uninstall"; exit 1 }
+          if ($files -gt 0) {
+            $left = Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+            Write-Host "leftover files: $($left -join '; ')"
+            Write-Error "EXHAUST-RED: install dir still has $files files after uninstall"; exit 1
+          }
           Write-Host "E16a PASS: uninstall clean (registry + install dir)"
           $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
           $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
@@ -415,8 +446,11 @@ jobs:
             }
             try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Write-Host "stopped app pid $pid0" } catch {}
           }
-          foreach ($n in @("llama-server")) {
-            Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          # Sidecar exes are llama-server-vulkan.exe / llama-server-cpu.exe — their process
+          # names NEVER equal bare "llama-server", so the old exact-name kill missed
+          # orphaned sidecars and the locked exe survived uninstall (E16 RED x2).
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "llama-server*" } | ForEach-Object {
+            try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
           }
           Write-Host "E18 DONE"
 

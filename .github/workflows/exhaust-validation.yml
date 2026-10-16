@@ -1,0 +1,438 @@
+# GENESIS exhaust validation — YZ-ordered zero-tolerance clean-install validation.
+# Tests ONLY build 38810928758 (pinned, fail-closed). No app-code changes.
+# Coverage: clean install (/S + GUI smoke), hash verify, uninstall+reinstall,
+# first boot, chat (Enter/send/long/empty/mixed/consecutive/rapid-fire),
+# 5 pills, 13 themes, voice honest-degrade, settings+updater approval-first,
+# restart persistence, restart mid-chat. ANY defect => RED, job fails.
+name: GENESIS — exhaust validation (zero tolerance)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Pinned build-windows run id (fail-closed: must match fix-v5 build)"
+        required: true
+        default: "38810928758"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  exhaust:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RECORDED_SHA256: 1686B4D485CAA1726F3BD62863D1A1F649D744549747A2B12976F9FEA1A15C2C
+      EXPECTED_BUILD: "38810928758"
+    steps:
+      - name: E0 checkout (driver script)
+        uses: actions/checkout@v4
+
+      - name: E1 fail-closed build pin
+        run: |
+          if ("${{ inputs.build_run_id }}" -ne $env:EXPECTED_BUILD) {
+            Write-Error "EXHAUST-RED: build_run_id ${{ inputs.build_run_id }} != pinned $env:EXPECTED_BUILD — refusing to test the wrong build"; exit 1
+          }
+          Write-Host "E1 PASS: pinned build ${{ inputs.build_run_id }}"
+
+      - name: E2 download installer artifact (pinned)
+        uses: actions/download-artifact@v4
+        with:
+          name: GENESIS-Setup-Full-windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.build_run_id }}
+          path: installer_dl
+
+      - name: E3 verify installer SHA-256 (fail-closed)
+        run: |
+          $exe = Get-ChildItem installer_dl -Recurse -File -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { Write-Error "EXHAUST-RED: no installer exe in artifact"; exit 1 }
+          $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          Write-Host "installer: $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB)"
+          Write-Host "actual:   $actual"
+          Write-Host "recorded: $env:RECORDED_SHA256"
+          if ($actual -ne $env:RECORDED_SHA256) { Write-Error "EXHAUST-RED: SHA-256 MISMATCH vs recorded fix-v5 installer hash"; exit 1 }
+          Write-Host "E3 PASS: SHA-256 matches recorded fix-v5 installer"
+          "INSTALLER_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: E4 standard-path installer GUI smoke (no /S)
+        run: |
+          # The interactive (non-silent) installer must at least launch its GUI
+          # without crashing. We cannot click through it headlessly, so: launch,
+          # assert a real window appears, then kill it. No install is performed.
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 2
+            $p.Refresh()
+            if ($p.HasExited) { break }
+            if ($p.MainWindowHandle -ne 0) { $ok = $true }
+          }
+          if ($p.HasExited) { Write-Error "EXHAUST-RED: standard-path installer exited immediately (exit $($p.ExitCode)) — GUI never came up"; exit 1 }
+          if (-not $ok) { try { Stop-Process -Id $p.Id -Force } catch {}; Write-Error "EXHAUST-RED: standard-path installer showed no window in 60s"; exit 1 }
+          Write-Host "E4 PASS: standard-path installer GUI launched (window handle present)"
+          try { Stop-Process -Id $p.Id -Force } catch {}
+          Start-Sleep -Seconds 3
+
+      - name: E5 silent install (/S) + locate installed app
+        run: |
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
+          $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          if (-not $p.HasExited) { try { Stop-Process -Id $p.Id -Force } catch {}; Write-Error "EXHAUST-RED: installer did not exit in 600s"; exit 1 }
+          $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                      "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+          $entry = $null
+          for ($i = 0; $i -lt 12 -and -not $entry; $i++) {
+            foreach ($h in $hives) {
+              $entry = Get-ChildItem $h -ErrorAction SilentlyContinue |
+                Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $entry) { Write-Error "EXHAUST-RED: no GENESIS uninstall registry entry after /S install"; exit 1 }
+          $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+          $exePath = Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } |
+            Select-Object -First 1
+          if (-not $exePath) { Write-Error "EXHAUST-RED: no GENESIS main exe at InstallLocation"; exit 1 }
+          Write-Host "E5 PASS: installed at $dir ($($exePath.Name))"
+          "MAIN_EXE=$($exePath.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "UNINSTALL_STR=$($entry.UninstallString)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: E6 install driver deps (playwright-core + sharp)
+        run: |
+          $w = "$env:RUNNER_TEMP\genesis_exhaust"; New-Item -ItemType Directory -Force $w | Out-Null
+          "EXH_WORK=$w" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Force "$w\shots" | Out-Null
+          Set-Location $w
+          npm init -y | Out-Null
+          npm install playwright-core sharp --no-audit --no-fund
+          Copy-Item "$env:GITHUB_WORKSPACE\.github\workflows\exhaust-drive.js" . -Force
+          Write-Host "E6 PASS: driver deps installed"
+
+      - name: E7 launch app with CDP + wait for webview render
+        run: |
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $env:GENESIS_N_GPU_LAYERS = "0"
+          "GENESIS_N_GPU_LAYERS=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "launching: $env:MAIN_EXE"
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "EXH_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "EXHAUST-RED: app exited before webview came up (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "EXHAUST-RED: CDP endpoint never answered in 180s"; exit 1 }
+          Write-Host "E7 PASS: webview rendered, CDP reachable"
+
+      - name: E8 first-boot evidence (boot.log, model parts, /health, ipc_ping)
+        run: |
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          $bootLog = Join-Path $dataDir "boot.log"
+          $deadline = (Get-Date).AddMinutes(30)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:8080/health" -TimeoutSec 5 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch {}
+            Start-Sleep -Seconds 15
+          }
+          if (-not $ok) { Write-Error "EXHAUST-RED: brain /health never 200 in 30 min"; exit 1 }
+          Write-Host "E8: brain /health 200"
+          if (-not (Test-Path $bootLog)) { Write-Error "EXHAUST-RED: no boot.log at $bootLog"; exit 1 }
+          $bl = Get-Content $bootLog -Raw
+          if ($bl -notmatch "manifest ok: 10 parts") { Write-Error "EXHAUST-RED: boot.log missing 'manifest ok: 10 parts'"; exit 1 }
+          Write-Host "E8 PASS: boot.log present, 10/10 model parts manifest, brain healthy"
+          Copy-Item $bootLog "$env:EXH_WORK\shots\boot.log" -Force
+
+      - name: E9 drive phase 1 (pills, 13 themes, chat core paths)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase1
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $v = Get-Content "$env:EXH_WORK\shots\phase1-verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "EXHAUST-RED phase1: $($v.error)"; exit 1 }
+          Write-Host "E9 PASS: phase 1 (pills/themes/chat-core) green"
+
+      - name: E10 chat.log evidence (ipc_ping + POST per exchange)
+        run: |
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          $chatLog = Join-Path $dataDir "chat.log"
+          if (-not (Test-Path $chatLog)) { Write-Error "EXHAUST-RED: no chat.log at $chatLog"; exit 1 }
+          $cl = Get-Content $chatLog -Raw
+          if ($cl -notmatch "ipc_ping ok") { Write-Error "EXHAUST-RED: chat.log missing 'ipc_ping ok' (NEVER-AGAIN gate line)"; exit 1 }
+          $posts = ([regex]::Matches($cl, "POST .* reply ok")).Count
+          Write-Host "E10: ipc_ping ok present; llama-server POST reply-ok count = $posts"
+          if ($posts -lt 5) { Write-Error "EXHAUST-RED: expected >=5 real llama-server replies in chat.log, found $posts"; exit 1 }
+          Write-Host "E10 PASS: >=5 real model replies proven via chat.log"
+          Copy-Item $chatLog "$env:EXH_WORK\shots\chat.log" -Force
+
+      - name: E11 drive phase 2 (voice honest-degrade, settings, updater)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase2
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $v = Get-Content "$env:EXH_WORK\shots\phase2-verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "EXHAUST-RED phase2: $($v.error)"; exit 1 }
+          Write-Host "E11 PASS: phase 2 (voice/settings/updater) green"
+
+      - name: E12 restart app (persistence test)
+        run: |
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
+          if ($env:EXH_PID) {
+            $pid0 = [int]$env:EXH_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
+          }
+          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 5
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "EXH_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "EXHAUST-RED: app exited on restart (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "EXHAUST-RED: CDP never answered after restart"; exit 1 }
+          $deadline = (Get-Date).AddMinutes(15)
+          $bok = $false
+          while ((Get-Date) -lt $deadline) {
+            try { $r = Invoke-WebRequest "http://127.0.0.1:8080/health" -TimeoutSec 5 -UseBasicParsing; if ($r.StatusCode -eq 200) { $bok = $true; break } } catch {}
+            Start-Sleep -Seconds 15
+          }
+          if (-not $bok) { Write-Error "EXHAUST-RED: brain /health never 200 after restart"; exit 1 }
+          Write-Host "E12 PASS: app restarted, webview + brain healthy"
+
+      - name: E13 drive phase 3 (persistence, rapid-fire x5)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase3
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $v = Get-Content "$env:EXH_WORK\shots\phase3-verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "EXHAUST-RED phase3: $($v.error)"; exit 1 }
+          Write-Host "E13 PASS: phase 3 (persistence/rapid-fire) green"
+
+      - name: E14 restart mid-chat (kill during in-flight reply, then recover)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase4a
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $marker = "$env:EXH_WORK\shots\MIDCHAT"
+          if (-not (Test-Path $marker)) { Write-Error "EXHAUST-RED: phase4a did not reach in-flight reply state"; exit 1 }
+          Write-Host "E14: reply in flight — killing app mid-chat"
+          if ($env:EXH_PID) {
+            $pid0 = [int]$env:EXH_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
+          }
+          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 5
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "EXH_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "EXHAUST-RED: app exited on post-kill relaunch (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "EXHAUST-RED: CDP never answered after mid-chat kill"; exit 1 }
+          $deadline = (Get-Date).AddMinutes(15)
+          $bok = $false
+          while ((Get-Date) -lt $deadline) {
+            try { $r = Invoke-WebRequest "http://127.0.0.1:8080/health" -TimeoutSec 5 -UseBasicParsing; if ($r.StatusCode -eq 200) { $bok = $true; break } } catch {}
+            Start-Sleep -Seconds 15
+          }
+          if (-not $bok) { Write-Error "EXHAUST-RED: brain /health never 200 after mid-chat kill"; exit 1 }
+          Write-Host "E14 PASS: app recovered after mid-chat kill, brain healthy"
+
+      - name: E15 drive phase 4b (post-kill recovery checks)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase4b
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $v = Get-Content "$env:EXH_WORK\shots\phase4b-verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "EXHAUST-RED phase4b: $($v.error)"; exit 1 }
+          Write-Host "E15 PASS: phase 4b (recovery) green"
+
+      - name: E16 uninstall clean + reinstall clean
+        run: |
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
+          if ($env:EXH_PID) {
+            $pid0 = [int]$env:EXH_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue } catch {}
+          }
+          foreach ($n in @("llama-server")) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 5
+          $un = $env:UNINSTALL_STR
+          if (-not $un) { Write-Error "EXHAUST-RED: no uninstall string recorded"; exit 1 }
+          Write-Host "uninstall string: $un"
+          $unExe = $null
+          if ($un -match '^"([^"]+)"') { $unExe = $Matches[1] }
+          else { $unExe = ($un -split ' ')[0] }
+          if (-not (Test-Path $unExe)) { Write-Error "EXHAUST-RED: uninstaller exe not found: $unExe"; exit 1 }
+          Write-Host "running uninstaller: $unExe /S"
+          $up = Start-Process -FilePath $unExe -ArgumentList "/S" -PassThru
+          $up | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 10
+          $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                      "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+          $left = $false
+          foreach ($h in $hives) {
+            $e = Get-ChildItem $h -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                 Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+            if ($e) { $left = $true }
+          }
+          if ($left) { Write-Error "EXHAUST-RED: GENESIS uninstall registry entry still present after silent uninstall"; exit 1 }
+          $installDir = Join-Path $env:LOCALAPPDATA "GENESIS Final"
+          if (Test-Path $installDir) {
+            $files = (Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+            if ($files -gt 0) { Write-Error "EXHAUST-RED: install dir still has $files files after uninstall"; exit 1 }
+          }
+          Write-Host "E16a PASS: uninstall clean (registry + install dir)"
+          $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
+          $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+          if (-not $p.HasExited) { try { Stop-Process -Id $p.Id -Force } catch {}; Write-Error "EXHAUST-RED: reinstall did not exit in 600s"; exit 1 }
+          $entry = $null
+          for ($i = 0; $i -lt 12 -and -not $entry; $i++) {
+            foreach ($h in $hives) {
+              $entry = Get-ChildItem $h -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $entry) { Write-Error "EXHAUST-RED: no registry entry after reinstall"; exit 1 }
+          Write-Host "E16b PASS: reinstall clean"
+          $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+          $exePath = Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } | Select-Object -First 1
+          "MAIN_EXE=$($exePath.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "EXH_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "EXHAUST-RED: reinstalled app exited before webview (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "EXHAUST-RED: CDP never answered on reinstalled app"; exit 1 }
+          Write-Host "E16c PASS: reinstalled app launches and renders"
+
+      - name: E17 drive phase 5 (reinstall render + ipc_ping)
+        env:
+          EXH_OUT: ${{ env.EXH_WORK }}\shots
+          EXH_PHASE: phase5
+        run: |
+          Set-Location $env:EXH_WORK
+          node exhaust-drive.js
+          $v = Get-Content "$env:EXH_WORK\shots\phase5-verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "EXHAUST-RED phase5: $($v.error)"; exit 1 }
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          $cl = Get-Content (Join-Path $dataDir "chat.log") -Raw
+          if ($cl -notmatch "ipc_ping ok") { Write-Error "EXHAUST-RED: no ipc_ping ok in chat.log after reinstall"; exit 1 }
+          Write-Host "E17 PASS: reinstall renders, ipc_ping gate live"
+
+      - name: E18 stop app + children
+        if: always()
+        run: |
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
+          if ($env:EXH_PID) {
+            $pid0 = [int]$env:EXH_PID
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $pid0 } | ForEach-Object {
+              try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            try { Stop-Process -Id $pid0 -Force -ErrorAction SilentlyContinue; Write-Host "stopped app pid $pid0" } catch {}
+          }
+          foreach ($n in @("llama-server")) {
+            Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "E18 DONE"
+
+      - name: E19 verdict summary
+        if: always()
+        run: |
+          $pass = $true
+          foreach ($f in @("phase1-verdict.json","phase2-verdict.json","phase3-verdict.json","phase4b-verdict.json","phase5-verdict.json")) {
+            $p = "$env:EXH_WORK\shots\$f"
+            if (Test-Path $p) {
+              $v = Get-Content $p -Raw | ConvertFrom-Json
+              Write-Host "== $f : pass=$($v.pass)"
+              foreach ($s in $v.steps) { Write-Host ("[{0}] {1} {2}" -f $(if ($s.ok) { "PASS" } else { "FAIL" }), $s.name, $s.detail) }
+              if (-not $v.pass) { $pass = $false }
+            } else { Write-Host "== $f : MISSING"; $pass = $false }
+          }
+          if (-not $pass) { Write-Error "EXHAUST-RED: one or more phases failed"; exit 1 }
+          Write-Host "EXHAUST-VERDICT: PASS — all phases green"
+
+      - name: E19b collect forensics (always)
+        if: always()
+        run: |
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          foreach ($f in @("boot.log", "llama-server.err.log", "chat.log")) {
+            $src = Join-Path $dataDir $f
+            if (Test-Path $src) {
+              Copy-Item $src "$env:EXH_WORK\shots\$f" -Force
+              Write-Host "forensics: copied $f ($((Get-Item $src).Length) bytes)"
+            } else { Write-Host "forensics: $src NOT FOUND" }
+          }
+
+      - name: Upload exhaust evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-exhaust-evidence
+          path: ${{ env.EXH_WORK }}\shots\

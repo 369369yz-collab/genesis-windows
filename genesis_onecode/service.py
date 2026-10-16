@@ -287,9 +287,10 @@ class Handler(BaseHTTPRequestHandler):
             _mem.log_exchange("user", message)
         except Exception:
             history = []
+        system = SYSTEM_PROMPT + memory_context()
         try:
             reply = llama_chat(
-                [{"role": "system", "content": SYSTEM_PROMPT}]
+                [{"role": "system", "content": system}]
                 + history
                 + [{"role": "user", "content": message}],
                 # CPU inference is slow; stay under the Rust shell's 300s
@@ -315,7 +316,58 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+# ---- First-boot seed: everything she and YZ did together ----------------
+# seed_facts.json is bundled with the brain. On the very first boot (facts
+# table empty) it is loaded into living memory — GENESIS is born remembering.
+# It NEVER overwrites: once she has lived (facts exist), the seed is ignored.
+_SEED_FILE = os.path.join(os.path.dirname(__file__), "brain", "seed_facts.json")
+
+
+def ensure_seed() -> int:
+    """Load seed facts on first boot. Returns number of facts seeded."""
+    try:
+        from brain import memory as _mem
+        if _mem.all_facts():
+            return 0
+        with open(_SEED_FILE, encoding="utf-8") as f:
+            seed = json.load(f)
+        n = 0
+        for key, value in seed.get("facts", []):
+            try:
+                _mem.remember(key, value)
+                n += 1
+            except (ValueError, TypeError):
+                continue
+        print(f"[brain] seeded {n} first-boot memories", flush=True)
+        return n
+    except Exception as e:  # noqa: BLE001 — seed failure must not kill boot
+        print(f"[brain] seed skipped: {e}", flush=True)
+        return 0
+
+
+def memory_context(max_chars: int = 2200) -> str:
+    """Compact 'things I remember' block, injected into the chat prompt."""
+    try:
+        from brain import memory as _mem
+        facts = _mem.all_facts()
+    except Exception:
+        return ""
+    if not facts:
+        return ""
+    lines, total = [], 0
+    for key, value in facts.items():
+        line = f"- {value}"
+        if total + len(line) > max_chars:
+            break
+        lines.append(line)
+        total += len(line)
+    if not lines:
+        return ""
+    return "\n\nThings you remember (your living memory, never forget):\n" + "\n".join(lines)
+
+
 def main() -> int:
+    ensure_seed()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[brain] listening on 127.0.0.1:{PORT} (llama: {LLAMA_URL})", flush=True)
     # Preflight: warn (don't die) if the model server isn't up yet —

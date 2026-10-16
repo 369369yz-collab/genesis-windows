@@ -165,8 +165,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "facts": _mem.all_facts()})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
-        elif self.path == "/world/state":
-            # Live world-state: true world knowledge + real runtime stats.
+        elif self.path == "/agents":
+            # The living GENIUS agents — born through evolution, not manufactured.
+            try:
+                from brain import womb as _womb
+                self._json({"ok": True, "agents": _womb.living_agents()})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+        elif self.path == "/missions":
+            try:
+                from brain import womb as _womb
+                self._json({"ok": True, "pending": _womb.pending_missions()})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+        elif self.path == "/world/state":            # Live world-state: true world knowledge + real runtime stats.
             # The panels (جهان ۳۶۹ / نکسوس / گذرگاه‌ها) render this — zero placeholders.
             try:
                 from brain import memory as _mem
@@ -295,8 +307,44 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
             return
-        if self.path == "/codex/check":
-            # The 369 laws as executable guards — fail-closed verdicts.
+        if self.path == "/agents/tick":
+            # One evolution step: birth, assign, execute, select.
+            body = self._read_json_body() or {}
+            try:
+                from brain import womb as _womb
+                from brain import codex as _codex
+                if body.get("execute"):
+                    events = _womb.tick(llama_fn=llama_chat,
+                                        codex_fn=_codex.check)
+                else:
+                    events = _womb.tick()
+                self._json({"ok": True, "events": events})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/agents/birth":
+            body = self._read_json_body() or {}
+            try:
+                from brain import womb as _womb
+                agent = _womb.birth(seed=str(body.get("seed", "")))
+                self._json({"ok": True, "agent": agent})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/missions":
+            body = self._read_json_body()
+            if not body or not str(body.get("title", "")).strip():
+                self._json({"ok": False, "error": "title required"}, 400)
+                return
+            try:
+                from brain import womb as _womb
+                m = _womb.add_mission(str(body["title"]),
+                                      str(body.get("detail", "")))
+                self._json({"ok": True, "mission": m})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/codex/check":            # The 369 laws as executable guards — fail-closed verdicts.
             body = self._read_json_body()
             if body is None:
                 self._json({"ok": False, "error": "bad body"}, 400)
@@ -411,8 +459,33 @@ def memory_context(max_chars: int = 2200) -> str:
     return "\n\nThings you remember (your living memory, never forget):\n" + "\n".join(lines)
 
 
+def _womb_tick_loop():
+    """Daemon: one evolution step every 10 minutes.
+
+    The womb only acts when there is something to do (pending missions or
+    agents with active missions) — otherwise the tick is a no-op. Selection
+    runs roughly hourly inside tick().
+    """
+    import traceback
+    while True:
+        time.sleep(600)
+        try:
+            from brain import womb as _womb
+            from brain import codex as _codex
+            events = _womb.tick(llama_fn=llama_chat, codex_fn=_codex.check)
+            born = len(events.get("born", []))
+            done = len(events.get("executed", []))
+            if born or done or events.get("selection"):
+                print(f"[womb] tick {events['tick']}: born={born} "
+                      f"executed={done} selection={events['selection']}",
+                      flush=True)
+        except Exception:
+            print("[womb] tick failed:\n" + traceback.format_exc(), flush=True)
+
+
 def main() -> int:
     ensure_seed()
+    threading.Thread(target=_womb_tick_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[brain] listening on 127.0.0.1:{PORT} (llama: {LLAMA_URL})", flush=True)
     # Preflight: warn (don't die) if the model server isn't up yet —

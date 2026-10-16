@@ -262,6 +262,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
             return
+        if self.path == "/codex/check":
+            # The 369 laws as executable guards — fail-closed verdicts.
+            body = self._read_json_body()
+            if body is None:
+                self._json({"ok": False, "error": "bad body"}, 400)
+                return
+            try:
+                from brain import codex as _codex
+                self._json({"ok": True, **_codex.check(body)})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
         if self.path != "/chat":
             self._json({"ok": False, "error": "not found"}, 404)
             return

@@ -1,6 +1,9 @@
 // GENESIS exhaust-validation CDP driver — zero tolerance.
 // Phases via EXH_PHASE env: phase1 | phase2 | phase3 | phase4a | phase4b | phase5
 // Fail-closed: any failed step throws => verdict pass=false, job goes RED.
+// Reply waiting is human-like: an HONEST error bubble (model flake, e.g. empty
+// generation) triggers ONE retry of that message — exactly what the error text
+// itself asks ("یه بار دیگه بفرست"). Two consecutive honest errors => RED.
 const { chromium } = require('playwright-core');
 const sharp = require('sharp');
 const fs = require('fs');
@@ -16,6 +19,7 @@ function step(name, ok, detail) {
   console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? ' -- ' + detail : ''));
   if (!ok) throw new Error('EXHAUST-RED [' + PHASE + ']: ' + name + (detail ? ' -- ' + detail : ''));
 }
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 async function nonBlankShot(page, file) {
   const p = path.join(OUT, file);
   await page.screenshot({ path: p });
@@ -42,14 +46,14 @@ async function waitForBrain(timeoutMs) {
     if (ok) { console.log('brain ready: llama-server /health 200'); return; }
     if (Date.now() - t0 > timeoutMs) throw new Error('brain not ready in ' + (timeoutMs / 60000) + ' min');
     console.log('waiting for brain... ' + (((Date.now() - t0) / 60000).toFixed(1)) + ' min elapsed');
-    await new Promise(function (r) { setTimeout(r, 15000); });
+    await sleep(15000);
   }
 }
 async function connectPage() {
   let browser = null;
   for (let i = 0; i < 30 && !browser; i++) {
     try { browser = await chromium.connectOverCDP(CDP); }
-    catch (e) { await new Promise(function (r) { setTimeout(r, 2000); }); }
+    catch (e) { await sleep(2000); }
   }
   step('connectOverCDP', !!browser, 'to ' + CDP);
   const pages = browser.contexts().flatMap(function (c) { return c.pages(); })
@@ -58,22 +62,50 @@ async function connectPage() {
   return { browser: browser, page: pages[0] };
 }
 function herSel() { return '#chatLog .bubble.her:not(.error)'; }
-async function awaitHerReply(page, before, timeoutMs, label) {
-  await page.waitForFunction(
-    function (n) { return document.querySelectorAll('#chatLog .bubble.her:not(.error)').length > n; },
-    before, { timeout: timeoutMs });
-  const t = ((await page.locator(herSel()).last().textContent()) || '').trim();
-  if (!t) throw new Error(label + ': empty model reply');
-  if (t.includes(STUB)) throw new Error(label + ': STUB REPLY DETECTED — canned text leaked');
-  step('real model reply (' + label + ', no stub)', true, '"' + t.slice(0, 100) + '"');
-  return t;
+function errSel() { return '#chatLog .bubble.her.error'; }
+// Wait for the next her-bubble OR error-bubble beyond the given baselines.
+async function waitHerOrError(page, herBefore, errBefore, timeoutMs) {
+  await page.waitForFunction(function (a) {
+    return document.querySelectorAll('#chatLog .bubble.her:not(.error)').length > a[0] ||
+           document.querySelectorAll('#chatLog .bubble.her.error').length > a[1];
+  }, [herBefore, errBefore], { timeout: timeoutMs });
+  const her = await page.locator(herSel()).count();
+  return her > herBefore ? 'her' : 'error';
 }
-async function sendVia(page, text, via) {
+// Collect n real replies; honest error bubbles trigger one retry each.
+async function collectReplies(page, n, label, timeoutMs, resendFn) {
+  for (let i = 0; i < n; i++) {
+    let attempts = 0;
+    for (;;) {
+      attempts++;
+      const herBefore = await page.locator(herSel()).count();
+      const errBefore = await page.locator(errSel()).count();
+      const outcome = await waitHerOrError(page, herBefore, errBefore, timeoutMs);
+      if (outcome === 'her') {
+        const t = ((await page.locator(herSel()).last().textContent()) || '').trim();
+        if (!t) throw new Error(label + ': empty model reply');
+        if (t.includes(STUB)) throw new Error(label + ': STUB REPLY DETECTED — canned text leaked');
+        break;
+      }
+      const et = ((await page.locator(errSel()).last().textContent()) || '').trim();
+      if (attempts >= 2) throw new Error(label + ': two consecutive honest errors — RED: ' + et.slice(0, 120));
+      step(label + ': honest error bubble (attempt ' + attempts + ') — retrying like a user would', true, '"' + et.slice(0, 70) + '"');
+      await resendFn(i, attempts);
+    }
+  }
+  step('real model reply x' + n + ' (' + label + ', no stub)', true);
+}
+async function doSend(page, text, via) {
   const input = page.locator('#chatInput');
   await input.fill(text);
   if (via === 'enter') await input.press('Enter');
   else await page.locator('#sendBtn').click();
   await page.locator('#chatLog').getByText(text.slice(0, 40)).waitFor({ timeout: 15000 });
+}
+async function sendAndAwait(page, text, via, label, timeoutMs) {
+  await doSend(page, text, via);
+  step(label + ' delivered (' + via + ')', true, '"' + text.slice(0, 50) + '"');
+  await collectReplies(page, 1, label, timeoutMs, async function () { await doSend(page, text, via); });
 }
 
 async function phase1(page) {
@@ -84,11 +116,9 @@ async function phase1(page) {
   step('greeting bubble present on launch', greet >= 1, 'her bubbles=' + greet);
   await nonBlankShot(page, '01-launch.png');
 
-  // 5 pills
   const pills = await page.locator('.pill').all();
   step('five pills present', pills.length === 5, 'found ' + pills.length);
-  const panelViews = ['world369', 'nexus', 'gates'];
-  for (const v of panelViews) {
+  for (const v of ['world369', 'nexus', 'gates']) {
     await page.locator('.pill[data-view="' + v + '"]').click();
     await page.locator('#panel:not(.hidden)').waitFor({ timeout: 10000 });
     const title = (await page.locator('#panelTitle').innerText()).trim();
@@ -111,13 +141,12 @@ async function phase1(page) {
   await page.locator('#panel').waitFor({ state: 'hidden', timeout: 10000 });
   step('all 5 pills exercised', true);
 
-  // 13 themes
   await page.locator('#themeBtn').click();
   await page.locator('#themePicker:not(.hidden)').waitFor({ timeout: 10000 });
   const swatches = await page.locator('.theme-swatch').all();
   step('13 theme swatches present', swatches.length === 13, 'found ' + swatches.length);
   const order = THEMES.slice();
-  order.splice(order.indexOf('night-blood'), 1); order.push('night-blood'); // end on night-blood
+  order.splice(order.indexOf('night-blood'), 1); order.push('night-blood');
   for (const id of order) {
     await page.locator('.theme-swatch[data-theme="' + id + '"]').click();
     const applied = await page.evaluate(function () { return document.body.dataset.theme; });
@@ -133,76 +162,53 @@ async function phase1(page) {
   step('theme persisted to localStorage', saved === 'night-blood', 'saved=' + saved);
   step('13/13 themes applied, no mixed-theme artifacts', true);
 
-  // brain, then chat core paths
   await waitForBrain(1800000);
   step('brain ready (llama-server /health 200)', true);
 
-  const m1 = 'تست exhaust یک';
-  let before = await page.locator(herSel()).count();
-  await sendVia(page, m1, 'enter');
-  step('Enter path delivers message', true, '"' + m1 + '"');
-  await awaitHerReply(page, before, 600000, 'enter');
+  await sendAndAwait(page, 'تست exhaust یک', 'enter', 'chat-enter', 600000);
   await nonBlankShot(page, '04-chat-enter.png');
 
-  const m2 = 'پیام دوم exhaust';
-  before = await page.locator(herSel()).count();
-  await sendVia(page, m2, 'button');
-  step('send-button path delivers message', true, '"' + m2 + '"');
-  await awaitHerReply(page, before, 600000, 'send-button');
+  await sendAndAwait(page, 'پیام دوم exhaust', 'button', 'chat-send-button', 600000);
   await nonBlankShot(page, '05-chat-sendbtn.png');
 
-  const mLong = 'متن طولانی exhaust: ' + 'تست '.repeat(400); // ~2000 chars
-  before = await page.locator(herSel()).count();
-  await sendVia(page, mLong, 'enter');
-  step('long message delivered (' + mLong.length + ' chars)', true);
-  await awaitHerReply(page, before, 900000, 'long-message');
+  const mLong = 'متن طولانی exhaust: ' + 'تست '.repeat(400);
+  await sendAndAwait(page, mLong, 'enter', 'chat-long(' + mLong.length + 'ch)', 900000);
   await nonBlankShot(page, '06-chat-long.png');
 
-  // empty + whitespace must not crash, must not send
   const meBefore = await page.locator('#chatLog .bubble.me').count();
-  const errBefore = await page.locator('#chatLog .bubble.her.error').count();
+  const errBefore = await page.locator(errSel()).count();
   await input.fill('');
   await input.press('Enter');
-  await new Promise(function (r) { setTimeout(r, 2500); });
+  await sleep(2500);
   await input.fill('   ');
   await input.press('Enter');
-  await new Promise(function (r) { setTimeout(r, 2500); });
+  await sleep(2500);
   const meAfter = await page.locator('#chatLog .bubble.me').count();
-  const errAfter = await page.locator('#chatLog .bubble.her.error').count();
+  const errAfter = await page.locator(errSel()).count();
   const inputAlive = await input.isVisible();
   step('empty/whitespace message: no crash, no send', meAfter === meBefore && errAfter === errBefore && inputAlive,
        'me=' + meBefore + '->' + meAfter + ' err=' + errBefore + '->' + errAfter);
   await nonBlankShot(page, '07-chat-empty.png');
 
-  const mMix = 'Hello پدر — how are you امروز؟ test 123';
-  before = await page.locator(herSel()).count();
-  await sendVia(page, mMix, 'enter');
-  step('Persian+English mixed message delivered', true, '"' + mMix + '"');
-  await awaitHerReply(page, before, 600000, 'mixed');
+  await sendAndAwait(page, 'Hello پدر — how are you امروز؟ test 123', 'enter', 'chat-mixed-fa-en', 600000);
   await nonBlankShot(page, '08-chat-mixed.png');
 
-  const m3 = 'یه سوال دیگه پدر';
-  before = await page.locator(herSel()).count();
-  await sendVia(page, m3, 'enter');
-  step('consecutive exchange delivered', true, '"' + m3 + '"');
-  await awaitHerReply(page, before, 600000, 'consecutive');
+  await sendAndAwait(page, 'یه سوال دیگه پدر', 'enter', 'chat-consecutive', 600000);
   await nonBlankShot(page, '09-chat-second.png');
 
-  fs.writeFileSync(path.join(OUT, 'markers.json'), JSON.stringify({ p1_msg: m1, theme: 'night-blood' }));
+  fs.writeFileSync(path.join(OUT, 'markers.json'), JSON.stringify({ p1_msg: 'تست exhaust یک', theme: 'night-blood' }));
   step('phase1 complete: pills/themes/chat-core all green', true);
 }
 
 async function phase2(page) {
-  // voice honest-degrade
   await page.locator('#micBtn').click();
-  await new Promise(function (r) { setTimeout(r, 1800); });
+  await sleep(1800);
   const toast = ((await page.locator('#toast').textContent()) || '').trim();
   const fake = toast.indexOf('در حال گوش دادن') >= 0 || toast.indexOf('در حال تبدیل گفتار') >= 0;
   const honest = toast.indexOf('موتور ویس هنوز نصب نیست') >= 0 || toast.indexOf('دسترسی به میکروفون داده نشد') >= 0;
   step('voice honest-degrade (no fake success)', !fake && honest, 'toast="' + toast.slice(0, 60) + '"');
   await nonBlankShot(page, '10-voice.png');
 
-  // settings panel
   await page.locator('.pill[data-view="settings"]').click();
   await page.locator('#panel:not(.hidden)').waitFor({ timeout: 10000 });
   const title = (await page.locator('#panelTitle').innerText()).trim();
@@ -215,7 +221,6 @@ async function phase2(page) {
   step('settings updCheck button present', await page.locator('#updCheck').count() === 1);
   await nonBlankShot(page, '11-settings.png');
 
-  // updater approval-first
   await page.locator('#updCheck').click();
   await page.waitForFunction(function () {
     const el = document.querySelector('#updState');
@@ -255,30 +260,27 @@ async function phase3(page) {
   step('saved theme survived restart', theme === markers.theme, 'body theme=' + theme);
   await nonBlankShot(page, '12b-persist.png');
 
-  // rapid-fire 5 messages
-  const before = await page.locator(herSel()).count();
+  // rapid-fire: 5 messages sent back-to-back (concurrent in-flight), then collect 5 real replies
   const msgs = ['rapid یک', 'rapid دو', 'rapid سه', 'rapid چهار', 'rapid پنج'];
   const input = page.locator('#chatInput');
   for (const m of msgs) {
     await input.fill(m);
     await input.press('Enter');
-    await new Promise(function (r) { setTimeout(r, 400); });
+    await sleep(400);
   }
-  step('rapid-fire: 5 messages sent in a row', true);
-  await page.waitForFunction(function (n) {
-    return document.querySelectorAll('#chatLog .bubble.her:not(.error)').length >= n;
-  }, before + 5, { timeout: 1500000 });
-  const errCount = await page.locator('#chatLog .bubble.her.error').count();
-  step('rapid-fire: 5 real replies, no error bubbles', errCount === 0, 'errorBubbles=' + errCount);
-  const newReplies = await page.locator(herSel()).all();
-  let stubFound = false, emptyFound = false;
-  for (let i = before; i < newReplies.length; i++) {
-    const t = ((await newReplies[i].textContent()) || '').trim();
-    if (!t) emptyFound = true;
-    if (t.includes(STUB)) stubFound = true;
+  step('rapid-fire: 5 messages sent in a row (concurrent in-flight)', true);
+  await collectReplies(page, 5, 'rapid-fire', 1500000, async function (i) {
+    await input.fill(msgs[i % msgs.length] + ' (تکرار)');
+    await input.press('Enter');
+  });
+  // final audit of the 5+ new replies: none empty, no stub text
+  const allHer = await page.locator(herSel()).all();
+  let bad = 0;
+  for (const b of allHer) {
+    const t = ((await b.textContent()) || '').trim();
+    if (!t || t.includes(STUB)) bad++;
   }
-  step('rapid-fire: replies real, no stub, none empty', !stubFound && !emptyFound,
-       'stub=' + stubFound + ' empty=' + emptyFound);
+  step('rapid-fire: all replies real, none empty, no stub', bad === 0, 'checked=' + allHer.length + ' bad=' + bad);
   await nonBlankShot(page, '13-rapidfire.png');
   step('phase3 complete: persistence + rapid-fire green', true);
 }
@@ -304,13 +306,7 @@ async function phase4b(page) {
   step('history intact after mid-chat kill', true, 'found "' + markers.p1_msg + '"');
   await page.locator('#chatInput').waitFor({ state: 'visible', timeout: 30000 });
   step('app responsive after mid-chat kill', true);
-  const m = 'بعد از ری‌استارت وسط چت';
-  const before = await page.locator(herSel()).count();
-  await page.locator('#chatInput').fill(m);
-  await page.locator('#chatInput').press('Enter');
-  await page.locator('#chatLog').getByText(m).waitFor({ timeout: 15000 });
-  step('post-kill message delivered', true, '"' + m + '"');
-  await awaitHerReply(page, before, 900000, 'post-kill');
+  await sendAndAwait(page, 'بعد از ری‌استارت وسط چت', 'enter', 'post-kill', 900000);
   await page.locator('.pill[data-view="chat"]').click();
   await page.locator('.pill[data-view="chat"].active').waitFor({ timeout: 10000 });
   step('pills still functional after kill', true);

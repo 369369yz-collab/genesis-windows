@@ -1,0 +1,16 @@
+# 369-world bridge — Render blueprint (free tier, no card).
+# YZ's 2-minute signup: render.com -> New -> Blueprint -> point at this repo.
+# Set BRIDGE_SECRET in the dashboard (a long random string only YZ holds).
+services:
+  - type: web
+    name: bridge-369
+    runtime: python
+    plan: free
+    buildCommand: "echo no-build-needed"
+    startCommand: "python3 bridge/server.py"
+    envVars:
+      - key: BRIDGE_SECRET
+        sync: false
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health

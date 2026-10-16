@@ -675,6 +675,16 @@ def _womb_tick_loop():
 
 def main() -> int:
     ensure_seed()
+    try:
+        from brain import sync as _sync
+        if _sync.start():
+            print("[brain] cloud bridge link active (heartbeat every 5m)",
+                  flush=True)
+        else:
+            print("[brain] cloud bridge not configured — fully local",
+                  flush=True)
+    except Exception as e:  # noqa: BLE001 — sync never breaks local boot
+        print(f"[brain] bridge link skipped: {e}", flush=True)
     threading.Thread(target=_womb_tick_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[brain] listening on 127.0.0.1:{PORT} (llama: {LLAMA_URL})", flush=True)

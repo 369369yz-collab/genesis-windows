@@ -18,7 +18,7 @@ import codex
 class TestCodex(unittest.TestCase):
     def test_safe_kinds_allowed(self):
         for kind in ("chat", "read_memory", "write_memory", "compute",
-                     "browse_read"):
+                     "browse_read", "browse_act"):
             v = codex.check({"kind": kind})
             self.assertTrue(v["allowed"], kind)
 

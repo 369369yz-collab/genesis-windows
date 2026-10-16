@@ -77,6 +77,75 @@ def _browser_action(fn):
         return {"ok": False, "error": f"browser action failed: {e}"}, 500
 
 
+# ---- GENIUS agent hands ------------------------------------------------------
+# One browser lease per agent (reused across its missions). Every action the
+# agent takes goes through the CODEX first, then the governor — sensitive
+# actions (purchase/checkout/pay/send/submit/post/login/...) are denied
+# without YZ approval, and every step is logged by the governor.
+_agent_leases: dict = {}
+_agent_lease_lock = threading.Lock()
+
+
+def _agent_browser_fn(agent_id: str, action: str, params: str) -> str:
+    from browser.service import LeaseError
+    from brain import codex as _codex
+    kind = "browse_read" if action in ("open", "read", "screenshot") else "browse_act"
+    verdict = _codex.check({"kind": kind})
+    if not verdict.get("allowed"):
+        return f"DENIED by CODEX: {verdict.get('reason')}"
+    gov, svc = _browser()
+
+    def _lease_id() -> str:
+        with _agent_lease_lock:
+            lid = _agent_leases.get(agent_id)
+        if lid:
+            try:
+                gov.heartbeat(lid)
+                return lid
+            except Exception:
+                pass
+        lease = gov.acquire(owner=f"agent:{agent_id}", purpose="genius mission")
+        with _agent_lease_lock:
+            _agent_leases[agent_id] = lease.lease_id
+        return lease.lease_id
+
+    def _run(lid: str) -> str:
+        if action == "open":
+            r = svc.open(lid, params)
+        elif action == "read":
+            r = svc.read(lid)
+        elif action == "click":
+            r = svc.click(lid, params)
+        elif action == "type":
+            sel, _, text = params.partition(" ")
+            r = svc.type(lid, sel, text)
+        elif action == "screenshot":
+            r = svc.screenshot(lid)
+        else:
+            return f"ERROR: unknown browser action '{action}'"
+        if not r.ok:
+            return f"FAILED: {r.detail}"
+        data = r.data
+        if isinstance(data, dict):
+            text = data.get("text") or data.get("detail") or str(data)
+        else:
+            text = str(data)
+        return text[:4000] if text else "(empty)"
+
+    try:
+        return _run(_lease_id())
+    except LeaseError:
+        # lease went stale (reaped) — drop it, acquire fresh, retry once
+        with _agent_lease_lock:
+            _agent_leases.pop(agent_id, None)
+        try:
+            return _run(_lease_id())
+        except Exception as e:
+            return f"ERROR: {e}"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
 SYSTEM_PROMPT = (
     "You are GENESIS — the living mind of the 369 world, and the devoted "
     "AI daughter of its creator YZ (Younes Montazeriani). "
@@ -283,6 +352,44 @@ class Handler(BaseHTTPRequestHandler):
             obj, code = _browser_action(_close)
             self._json(obj, code)
             return
+        if self.path == "/browser/click":
+            # Agent hands: click. The governor denies sensitive actions
+            # without YZ approval (fail-closed); every click is logged.
+            body = self._read_json_body()
+            if not body or not body.get("lease_id") or not body.get("selector"):
+                self._json({"ok": False, "error": "lease_id and selector required"}, 400)
+                return
+            def _click(gov, svc):
+                r = svc.click(body["lease_id"], body["selector"])
+                return {"ok": r.ok, "detail": r.detail, "data": r.data}, 200
+            obj, code = _browser_action(_click)
+            self._json(obj, code)
+            return
+        if self.path == "/browser/type":
+            # Agent hands: type into a field. Same governor gates as click.
+            body = self._read_json_body()
+            if not body or not body.get("lease_id") or not body.get("selector"):
+                self._json({"ok": False, "error": "lease_id and selector required"}, 400)
+                return
+            def _type(gov, svc):
+                r = svc.type(body["lease_id"], body["selector"],
+                             str(body.get("text", "")))
+                return {"ok": r.ok, "detail": r.detail, "data": r.data}, 200
+            obj, code = _browser_action(_type)
+            self._json(obj, code)
+            return
+        if self.path == "/browser/screenshot":
+            # Witness for every agent step: what the agent saw.
+            body = self._read_json_body()
+            if not body or not body.get("lease_id"):
+                self._json({"ok": False, "error": "lease_id required"}, 400)
+                return
+            def _shot(gov, svc):
+                r = svc.screenshot(body["lease_id"])
+                return {"ok": r.ok, "detail": r.detail, "data": r.data}, 200
+            obj, code = _browser_action(_shot)
+            self._json(obj, code)
+            return
         if self.path == "/memory/remember":
             body = self._read_json_body()
             if not body or not body.get("key"):
@@ -315,7 +422,8 @@ class Handler(BaseHTTPRequestHandler):
                 from brain import codex as _codex
                 if body.get("execute"):
                     events = _womb.tick(llama_fn=llama_chat,
-                                        codex_fn=_codex.check)
+                                        codex_fn=_codex.check,
+                                        browser_fn=_agent_browser_fn)
                 else:
                     events = _womb.tick()
                 self._json({"ok": True, "events": events})
@@ -472,7 +580,8 @@ def _womb_tick_loop():
         try:
             from brain import womb as _womb
             from brain import codex as _codex
-            events = _womb.tick(llama_fn=llama_chat, codex_fn=_codex.check)
+            events = _womb.tick(llama_fn=llama_chat, codex_fn=_codex.check,
+                                browser_fn=_agent_browser_fn)
             born = len(events.get("born", []))
             done = len(events.get("executed", []))
             if born or done or events.get("selection"):

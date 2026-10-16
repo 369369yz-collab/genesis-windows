@@ -147,3 +147,54 @@ class TestWombExecution(unittest.TestCase):
         rec = womb.tick()
         self.assertEqual(len(rec["born"]), 1)
         self.assertEqual(rec["executed"], [])
+
+
+def _fake_llama_hands(messages):
+    sys_prompt = messages[0]["content"]
+    if "example.com" in sys_prompt or "[browser open" in sys_prompt:
+        return "The page says hello. RESULT: SUCCESS"
+    return "I will check the page.\nBROWSER: open https://example.com\nBROWSER: read"
+
+
+class TestBrowserHands(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.mkdtemp(prefix="wombtest-")
+        os.environ["GENESIS_DATA_DIR"] = tmp
+        womb._db = None
+        womb._tick_count = 0
+
+    def test_parse_actions(self):
+        acts = womb._parse_browser_actions(
+            "hello\nBROWSER: open https://x.com\nBROWSER: type #q hi there")
+        self.assertEqual(acts, [("open", "https://x.com"), ("type", "#q hi there")])
+
+    def test_hands_loop(self):
+        calls = []
+
+        def fake_browser(agent_id, action, params):
+            calls.append((action, params))
+            return f"page text for {params}"
+
+        a = womb.birth(seed="x")
+        womb.add_mission("visit a page")
+        rec = womb.tick(llama_fn=_fake_llama_hands,
+                        codex_fn=_fake_codex_allow,
+                        browser_fn=fake_browser)
+        self.assertEqual(len(rec["executed"]), 1)
+        self.assertEqual(calls[0], ("open", "https://example.com"))
+        self.assertEqual(calls[1], ("read", ""))
+        ag = womb.get_agent(a["id"])
+        self.assertEqual(ag["missions_ok"], 1)
+
+    def test_browser_error_does_not_kill_agent(self):
+        def bad_browser(agent_id, action, params):
+            raise RuntimeError("no chromium here")
+
+        a = womb.birth(seed="x")
+        womb.add_mission("browse anyway")
+        rec = womb.tick(llama_fn=_fake_llama_hands,
+                        codex_fn=_fake_codex_allow,
+                        browser_fn=bad_browser)
+        self.assertEqual(len(rec["executed"]), 1)
+        # agent survived; mission completed (success depends on final text)
+        self.assertIsNotNone(womb.get_agent(a["id"]))

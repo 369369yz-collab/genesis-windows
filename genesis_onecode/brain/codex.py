@@ -34,7 +34,14 @@ _SAFE_KINDS = frozenset({
     "read_memory",      # reading her own memory
     "write_memory",     # remembering (facts/exchanges) — local SQLite
     "compute",          # local reasoning, planning
-    "browse_read",      # reading a page through the governor (no side effects)
+    "browse_read",      # opening a page and reading it (no side effects)
+    # "browse_act" (click/type in the browser): allowed as a KIND — the real
+    # gate is the browser governor, which denies its SENSITIVE_ACTIONS
+    # (purchase/checkout/pay/send/submit/post/login/...) without YZ approval
+    # (fail-closed: no callback => denied), and every action is logged.
+    # Clicking a link or typing in a search box is reversible; the
+    # irreversible things are fenced by the governor, not by this list.
+    "browse_act",
 })
 
 

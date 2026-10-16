@@ -298,8 +298,13 @@ def _active_mission(agent_id: str) -> dict | None:
     return dict(zip(keys, row))
 
 
-def execute_active(agent_id: str, llama_fn, codex_fn) -> dict | None:
-    """One agent works its active mission. Returns the completion record."""
+def execute_active(agent_id: str, llama_fn, codex_fn,
+                   browser_fn=None) -> dict | None:
+    """One agent works its active mission. Returns the completion record.
+
+    With browser_fn: the agent gets browser hands (agentic loop). Without:
+    single reasoning pass (used in tests and when the browser is absent).
+    """
     ag = get_agent(agent_id)
     if not ag or ag["status"] != "alive":
         return None
@@ -317,21 +322,24 @@ def execute_active(agent_id: str, llama_fn, codex_fn) -> dict | None:
         mem_lines = "; ".join(f"{k}={v}" for k, v in list(mem_ctx.items())[:12])
     except Exception:
         mem_lines = ""
-    prompt = (
-        f"You are {ag['name']}, a GENIUS agent of the 369 world. "
-        f"Your nature: {ag['trait']}. "
-        f"Your mission: {m['title']}. {m['detail']}\n"
-        f"What you remember: {mem_lines}\n"
-        f"Work the mission now. Be concrete and honest. If you cannot do "
-        f"something, say what is missing instead of pretending. "
-        f"End with a line: RESULT: SUCCESS or RESULT: FAILED."
-    )
-    try:
-        out = llama_fn([{"role": "system", "content": prompt},
-                        {"role": "user", "content": "Begin."}])
-    except Exception as e:
-        return complete_mission(agent_id, m["id"], False,
-                                f"model error: {e}")
+    if browser_fn is not None:
+        out = _run_with_hands(ag, m, mem_lines, llama_fn, browser_fn)
+    else:
+        prompt = (
+            f"You are {ag['name']}, a GENIUS agent of the 369 world. "
+            f"Your nature: {ag['trait']}. "
+            f"Your mission: {m['title']}. {m['detail']}\n"
+            f"What you remember: {mem_lines}\n"
+            f"Work the mission now. Be concrete and honest. If you cannot do "
+            f"something, say what is missing instead of pretending. "
+            f"End with a line: RESULT: SUCCESS or RESULT: FAILED."
+        )
+        try:
+            out = llama_fn([{"role": "system", "content": prompt},
+                            {"role": "user", "content": "Begin."}])
+        except Exception as e:
+            return complete_mission(agent_id, m["id"], False,
+                                    f"model error: {e}")
     success = "RESULT: SUCCESS" in out.upper().replace("**", "")
     notes = out[:3000]
     return complete_mission(agent_id, m["id"], success, notes)
@@ -345,7 +353,7 @@ _tick_count = 0
 SELECTION_EVERY_TICKS = 6  # selection runs roughly hourly
 
 
-def tick(llama_fn=None, codex_fn=None) -> dict:
+def tick(llama_fn=None, codex_fn=None, browser_fn=None) -> dict:
     """Birth, assign, execute, select. Returns what happened."""
     global _tick_count
     _tick_count += 1
@@ -365,7 +373,7 @@ def tick(llama_fn=None, codex_fn=None) -> dict:
 
     if llama_fn and codex_fn:
         for ag in living_agents():
-            rec = execute_active(ag["id"], llama_fn, codex_fn)
+            rec = execute_active(ag["id"], llama_fn, codex_fn, browser_fn)
             if rec:
                 events["executed"].append(
                     {"agent": ag["id"], "fitness": rec["fitness"]})
@@ -374,3 +382,78 @@ def tick(llama_fn=None, codex_fn=None) -> dict:
         events["selection"] = selection()
 
     return events
+
+
+# ---- browser hands ------------------------------------------------------------
+# The agent's hands: it writes BROWSER: action lines, the executor runs them
+# through browser_fn (governor lease + CODEX gates inside), results feed back.
+# Max 8 steps per mission — bounded, never a runaway.
+
+BROWSER_HELP = (
+    "You have browser hands. To act in the browser, write lines starting "
+    "with BROWSER:, one per line:\n"
+    "  BROWSER: open <url>\n"
+    "  BROWSER: read\n"
+    "  BROWSER: click <selector>\n"
+    "  BROWSER: type <selector> <text>\n"
+    "  BROWSER: screenshot\n"
+    "After your actions run you will see their results. Then either act "
+    "again or finish with a line: RESULT: SUCCESS or RESULT: FAILED."
+)
+
+MAX_BROWSER_STEPS = 8
+
+
+def _parse_browser_actions(text: str) -> list[tuple[str, str]]:
+    actions = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.upper().startswith("BROWSER:"):
+            rest = line[len("BROWSER:"):].strip()
+            if not rest:
+                continue
+            parts = rest.split(None, 1)
+            actions.append((parts[0].lower(), parts[1] if len(parts) > 1 else ""))
+    return actions
+
+
+def _run_with_hands(agent: dict, mission: dict, mem_lines: str,
+                    llama_fn, browser_fn) -> str:
+    """Agentic loop: LLM reasons, BROWSER lines execute, results feed back."""
+    transcript: list[str] = []
+    for step in range(MAX_BROWSER_STEPS):
+        context = "\n".join(transcript[-6:])  # recent history only
+        prompt = (
+            f"You are {agent['name']}, a GENIUS agent of the 369 world. "
+            f"Your nature: {agent['trait']}. "
+            f"Your mission: {mission['title']}. {mission['detail']}\n"
+            f"What you remember: {mem_lines}\n"
+            f"{BROWSER_HELP}\n"
+            f"So far:\n{context}\n"
+            f"Continue. Act with the browser if it helps; otherwise conclude."
+        )
+        try:
+            out = llama_fn([{"role": "system", "content": prompt},
+                            {"role": "user", "content": "Your move."}])
+        except Exception as e:
+            transcript.append(f"[model error: {e}]")
+            break
+        actions = _parse_browser_actions(out)
+        # strip the action lines for the readable transcript
+        spoken = "\n".join(l for l in out.splitlines()
+                           if not l.strip().upper().startswith("BROWSER:"))
+        if spoken.strip():
+            transcript.append(f"[agent] {spoken.strip()[:800]}")
+        if not actions:
+            transcript.append(f"[final] {out.strip()[:800]}")
+            break
+        for name, params in actions:
+            try:
+                result = browser_fn(agent["id"], name, params)
+            except Exception as e:
+                result = f"ERROR: {e}"
+            transcript.append(f"[browser {name} {params[:80]}] -> "
+                              f"{str(result)[:1200]}")
+    return "\n".join(transcript)
+
+

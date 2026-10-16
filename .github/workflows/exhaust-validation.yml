@@ -320,6 +320,7 @@ jobs:
           Write-Host "running uninstaller: $unExe /S"
           $up = Start-Process -FilePath $unExe -ArgumentList "/S" -PassThru
           $up | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
+
           # NSIS silent uninstall copies itself to %TEMP% and the parent process
           # exits immediately while the copy keeps working — so the process
           # handle is NOT a reliable completion signal (proven run 5: handle
@@ -342,10 +343,16 @@ jobs:
           if (-not $gone) { Write-Error "EXHAUST-RED: GENESIS uninstall registry entry still present 5 min after silent uninstall — real uninstaller defect"; exit 1 }
           Write-Host "E16a PASS: uninstall clean (registry entry gone)"
           $installDir = Join-Path $env:LOCALAPPDATA "GENESIS Final"
-          if (Test-Path $installDir) {
-            $files = (Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
-            if ($files -gt 0) { Write-Error "EXHAUST-RED: install dir still has $files files after uninstall"; exit 1 }
+          $dDeadline = (Get-Date).AddMinutes(2)
+          $files = -1
+          while ((Get-Date) -lt $dDeadline) {
+            if (Test-Path $installDir) {
+              $files = (Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+            } else { $files = 0 }
+            if ($files -eq 0) { break }
+            Start-Sleep -Seconds 10
           }
+          if ($files -gt 0) { Write-Error "EXHAUST-RED: install dir still has $files files after uninstall"; exit 1 }
           Write-Host "E16a PASS: uninstall clean (registry + install dir)"
           $p = Start-Process -FilePath $env:INSTALLER_EXE -ArgumentList "/S" -PassThru
           $p | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue

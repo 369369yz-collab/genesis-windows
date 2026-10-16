@@ -97,10 +97,15 @@ async function collectReplies(page, n, label, timeoutMs, resendFn) {
 }
 async function doSend(page, text, via) {
   const input = page.locator('#chatInput');
+  // Confirm via me-bubble COUNT (not getByText: a retry duplicates the text
+  // and Playwright strict mode rejects multi-match locators).
+  const meBefore = await page.locator('#chatLog .bubble.me').count();
   await input.fill(text);
   if (via === 'enter') await input.press('Enter');
   else await page.locator('#sendBtn').click();
-  await page.locator('#chatLog').getByText(text.slice(0, 40)).waitFor({ timeout: 15000 });
+  await page.waitForFunction(function (n) {
+    return document.querySelectorAll('#chatLog .bubble.me').length > n;
+  }, meBefore, { timeout: 15000 });
 }
 async function sendAndAwait(page, text, via, label, timeoutMs) {
   await doSend(page, text, via);
@@ -254,7 +259,7 @@ async function phase2(page) {
 
 async function phase3(page) {
   const markers = JSON.parse(fs.readFileSync(path.join(OUT, 'markers.json'), 'utf8'));
-  await page.locator('#chatLog').getByText(markers.p1_msg).waitFor({ timeout: 30000 });
+  await page.locator('#chatLog').getByText(markers.p1_msg).first().waitFor({ timeout: 30000 });
   step('chat history survived restart', true, 'found "' + markers.p1_msg + '"');
   const theme = await page.evaluate(function () { return document.body.dataset.theme; });
   step('saved theme survived restart', theme === markers.theme, 'body theme=' + theme);
@@ -302,7 +307,7 @@ async function phase4a(page) {
 
 async function phase4b(page) {
   const markers = JSON.parse(fs.readFileSync(path.join(OUT, 'markers.json'), 'utf8'));
-  await page.locator('#chatLog').getByText(markers.p1_msg).waitFor({ timeout: 30000 });
+  await page.locator('#chatLog').getByText(markers.p1_msg).first().waitFor({ timeout: 30000 });
   step('history intact after mid-chat kill', true, 'found "' + markers.p1_msg + '"');
   await page.locator('#chatInput').waitFor({ state: 'visible', timeout: 30000 });
   step('app responsive after mid-chat kill', true);

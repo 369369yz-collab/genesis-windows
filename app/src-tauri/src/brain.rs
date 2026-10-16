@@ -548,6 +548,13 @@ impl BrainLauncher {
             .env("GENESIS_CHROMIUM_EXE", chrome_exe.to_string_lossy().to_string())
             .env("GENESIS_DATA_DIR", data_dir.to_string_lossy().to_string())
             .env("PYTHONUTF8", "1")
+            // NEVER-AGAIN (exhaust E16 RED 2026-10-16): the bundled CPython
+            // bytecode-compiled stdlib imports (http.server) into __pycache__
+            // inside the INSTALL dir at runtime; the NSIS uninstaller cannot
+            // remove files it never installed, so silent uninstall left one
+            // .pyc behind. Zero-tolerance: the app must never write into its
+            // own install dir — no .pyc files, ever.
+            .env("PYTHONDONTWRITEBYTECODE", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn();

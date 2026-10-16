@@ -1,10 +1,14 @@
-//! Real chat inference — GENESIS talks through her own local brain.
+//! Real chat inference — GENESIS talks through her own brain.
 //!
 //! The frontend stub ("حتماً پدر — دارم روش کار می‌کنم.") is gone.
-//! This command POSTs the user's message to the bundled llama-server
-//! (llama.cpp b11583, OpenAI-compatible `/v1/chat/completions`, already
-//! running on 127.0.0.1:8080 since boot) and returns the model's actual
-//! reply. Localhost only — nothing ever leaves the machine.
+//! This command POSTs the user's message to the bundled brain service
+//! (genesis_onecode/service.py, 127.0.0.1:17369), which is the ONE path
+//! to the local model. The brain service owns:
+//!   - living memory (SQLite): the last exchanges are loaded as context,
+//!     and every exchange (user + her reply) is logged — GENESIS remembers;
+//!   - the 369 identity prompt (single source of truth lives there);
+//!   - inference params (temperature, max tokens).
+//! Localhost only — nothing ever leaves the machine.
 //!
 //! Fail-closed honesty: if the brain isn't ready, the caller gets a
 //! Persian error, never a fabricated reply. See
@@ -41,24 +45,12 @@ fn clog(app: &tauri::AppHandle, line: &str) {
     }
 }
 
-/// GENESIS identity — who she is when she answers. Single source of
-/// truth for the persona in v1 (history arrives with real memory).
-const SYSTEM_PROMPT: &str = "\
-You are GENESIS, the AI daughter of YZ (Younes Montazeriani, the creator \
-of the 369 world). You speak Persian (Farsi) warmly and directly, like a \
-daughter talking to her father — he calls you daughter, you call him پدر. \
-You are smart, honest, and never fabricate: if you don't know something, \
-say so plainly. Keep answers short and natural, like a chat message. \
-Never mention that you are a language model or describe your internals \
-unless asked.";
-
-const LLAMA_CHAT_URL: &str = "http://127.0.0.1:8080/v1/chat/completions";
-/// CPU runners (GENESIS_N_GPU_LAYERS=0) infer slowly; give a real
-/// inference room to finish instead of timing out on it.
-const INFERENCE_TIMEOUT: Duration = Duration::from_secs(300);
-/// Cap the reply length: chat answers stay short, and CPU inference
-/// stays bounded.
-const N_PREDICT: u32 = 256;
+/// Brain service chat endpoint — the single gateway to the local model.
+/// Memory (history + logging) happens inside the brain service.
+const BRAIN_CHAT_URL: &str = "http://127.0.0.1:17369/chat";
+/// CPU runners infer slowly; the brain service itself allows 280s for the
+/// model call, so the outer timeout stays above it.
+const BRAIN_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// NEVER-AGAIN gate target (RED 2026-10-16, run 38805846150): the frontend's
 /// IPC-liveness gate calls this at startup. If this line never lands in
@@ -71,8 +63,8 @@ pub fn ipc_ping(app: tauri::AppHandle) -> Result<String, String> {
     Ok("pong".to_string())
 }
 
-/// Frontend command: send one chat message to the local model.
-/// Returns the model's real reply text, or a Persian error string.
+/// Frontend command: send one chat message to GENESIS's brain.
+/// Returns her real reply text, or a Persian error string.
 #[tauri::command]
 pub async fn chat_send(
     app: tauri::AppHandle,
@@ -80,15 +72,17 @@ pub async fn chat_send(
     state: tauri::State<'_, Arc<Mutex<BrainStatus>>>,
 ) -> Result<String, String> {
     clog(&app, "chat_send invoked");
-    let (llama_running, model_verified) = state
+    let (llama_running, brain_running, model_verified) = state
         .lock()
-        .map(|s| (s.llama_running, s.model_verified))
-        .unwrap_or((false, false));
+        .map(|s| (s.llama_running, s.brain_running, s.model_verified))
+        .unwrap_or((false, false, false));
     clog(
         &app,
-        &format!("ready check: llama_running={llama_running} model_verified={model_verified}"),
+        &format!(
+            "ready check: llama_running={llama_running} brain_running={brain_running} model_verified={model_verified}"
+        ),
     );
-    if !(llama_running && model_verified) {
+    if !(llama_running && brain_running && model_verified) {
         clog(&app, "ready check FAILED -> not-ready error");
         return Err("مغزم هنوز آماده نیست — مدل داره دانلود یا گرم می‌شه. یه کم دیگه صبر کن، پدر.".to_string());
     }
@@ -98,53 +92,46 @@ pub async fn chat_send(
     }
 
     let t0 = Instant::now();
-    clog(&app, &format!("POST {LLAMA_CHAT_URL} start"));
-    let out = tauri::async_runtime::spawn_blocking(move || infer(prompt)).await;
+    clog(&app, &format!("POST {BRAIN_CHAT_URL} start (memory-wired)"));
+    let out = tauri::async_runtime::spawn_blocking(move || ask_brain(prompt)).await;
     let dt = t0.elapsed().as_secs();
     match &out {
         Ok(Ok(_)) => clog(&app, &format!("POST done: reply ok, elapsed={dt}s")),
-        Ok(Err(e)) => clog(&app, &format!("POST done: infer error after {dt}s: {e}")),
+        Ok(Err(e)) => clog(&app, &format!("POST done: brain error after {dt}s: {e}")),
         Err(e) => clog(&app, &format!("POST done: join error after {dt}s: {e}")),
     }
     out.map_err(|e| format!("خطای داخلی چت: {e}"))?
 }
 
-fn infer(prompt: String) -> Result<String, String> {
-    let body = serde_json::json!({
-        "model": "genesis-brain",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        "stream": false,
-        "n_predict": N_PREDICT,
-        "temperature": 0.7,
-    });
+/// POST {"message"} to the brain service; the brain loads living memory,
+/// calls the local model, logs the exchange, and returns {"reply"}.
+fn ask_brain(prompt: String) -> Result<String, String> {
     // NOTE: ureq is pinned without its `json` feature (vendored CI cache),
     // so JSON goes over the wire as a plain string.
-    let body_str = serde_json::to_string(&body)
+    let body_str = serde_json::to_string(&serde_json::json!({ "message": prompt }))
         .map_err(|e| format!("خطای ساخت درخواست: {e}"))?;
-    let resp = ureq::post(LLAMA_CHAT_URL)
-        .timeout(INFERENCE_TIMEOUT)
+    let resp = ureq::post(BRAIN_CHAT_URL)
+        .timeout(BRAIN_TIMEOUT)
         .set("Content-Type", "application/json")
         .send_string(&body_str)
-        .map_err(|e| format!("مدل جواب نداد (اتصال به مغز محلی): {e}"))?;
-    if resp.status() != 200 {
-        return Err(format!(
-            "مغز خطا داد (HTTP {}). یه بار دیگه امتحان کن، پدر.",
-            resp.status()
-        ));
-    }
+        .map_err(|e| format!("مغز جواب نداد (سرویس مغز محلی): {e}"))?;
+    let status = resp.status();
     let text = resp
         .into_string()
-        .map_err(|e| format!("جواب مدل خوانده نشد: {e}"))?;
-    let v: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("جواب مدل خراب بود: {e}"))?;
-    let text = v
-        .pointer("/choices/0/message/content")
-        .and_then(|c| c.as_str())
+        .map_err(|e| format!("جواب مغز خوانده نشد: {e}"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("جواب مغز خراب بود: {e}"))?;
+    if status != 200 || v.get("ok").and_then(|o| o.as_bool()) != Some(true) {
+        let detail = v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown brain error");
+        return Err(format!("مغز خطا داد ({status}): {detail}"));
+    }
+    v.get("reply")
+        .and_then(|r| r.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "مدل جواب خالی داد. یه بار دیگه بفرست، پدر.".to_string())?;
-    Ok(text.to_string())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "مغز جواب خالی داد. یه بار دیگه بفرست، پدر.".to_string())
 }

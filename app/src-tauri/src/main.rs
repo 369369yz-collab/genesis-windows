@@ -20,6 +20,7 @@ mod ram_guard;
 mod sidecar_supervisor;
 mod station;
 mod voice;
+mod world;
 
 use sidecar_supervisor::{SidecarBackend, SidecarSupervisor};
 use std::sync::{Arc, Mutex};
@@ -69,7 +70,8 @@ fn main() {
             chat::chat_send,
             chat::ipc_ping,
             voice::voice_status,
-            voice::voice_transcribe
+            voice::voice_transcribe,
+            world::world_state
         ])
         .setup(|app| {
             // --- W1 RAM budget guard: hard cap first, then the boot check.

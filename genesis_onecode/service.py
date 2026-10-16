@@ -165,6 +165,39 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "facts": _mem.all_facts()})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
+        elif self.path == "/world/state":
+            # Live world-state: true world knowledge + real runtime stats.
+            # The panels (جهان ۳۶۹ / نکسوس / گذرگاه‌ها) render this — zero placeholders.
+            try:
+                from brain import memory as _mem
+                facts = _mem.all_facts()
+                n_facts = len(facts)
+                n_exchanges = len(_mem.recent_exchanges(50))
+            except Exception:
+                n_facts, n_exchanges = 0, 0
+            try:
+                with open(os.path.join(os.path.dirname(__file__), "brain",
+                                       "world.json"), encoding="utf-8") as f:
+                    worlds = json.load(f)
+            except Exception:
+                worlds = {"worlds": {}, "gates": []}
+            try:
+                from brain import codex as _codex
+                n_guards = len(_codex._APPROVAL_KINDS) + len(_codex._SAFE_KINDS)
+            except Exception:
+                n_guards = 0
+            self._json({
+                "ok": True,
+                "worlds": worlds.get("worlds", {}),
+                "gates": worlds.get("gates", []),
+                "live": {
+                    "facts": n_facts,
+                    "exchanges": n_exchanges,
+                    "uptime_s": round(time.time() - _started_at, 1),
+                    "codex_guards": n_guards,
+                    "llama_alive": llama_alive(),
+                },
+            })
         elif self.path == "/status":
             import pathlib
             chrom = CHROMIUM_EXE

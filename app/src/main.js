@@ -20,12 +20,53 @@ const THEMES = [
 ];
 
 const VIEWS = {
-  world369: { title: "جهان ۳۶۹", body: "جهان ۳۶۹ — محیط اختصاصی جهان. دانش، حافظه، مأموریت‌ها و وضعیت زنده‌ی جهان اینجاست. پل جهان به GENESIS در حال اتصال نهایی است." },
-  nexus:    { title: "جهان نکسوس", body: "جهان نکسوس — جهان مستقل سوم. محیط و سیم‌کشی کامل آن در این نسخه ساخته می‌شود." },
-  gates:    { title: "گذرگاه‌های زیست", body: "گذرگاه‌های زیست جهان ۳۶۹ — مسیرهای زنده‌ی ورود به بخش‌های جهان. هر گذرگاه که آماده شود همین‌جا باز می‌شود." },
+  world369: { title: "جهان ۳۶۹", live: "world369" },
+  nexus:    { title: "جهان نکسوس", live: "nexus" },
+  gates:    { title: "گذرگاه‌های زیست", live: "gates" },
   chat:     { title: "گفتگو", body: null },
   settings: { title: "تنظیمات", body: "تنظیمات — تم، صدا و رفتار برنامه. تم فعلی از دکمه ◐ بالای صفحه عوض می‌شود و ذخیره می‌ماند." },
 };
+
+/* ---------- live world panels: zero placeholders ----------
+   جهان ۳۶۹ / نکسوس / گذرگاه‌ها از سرویس مغز (world_state) می‌خونن —
+   دانشِ واقعی جهان + آمارِ زنده‌ی لحظه‌ای (حافظه، آپتایم، نگهبان‌های کدکس). */
+async function renderLivePanel(kind) {
+  const titles = { world369: "جهان ۳۶۹", nexus: "جهان نکسوس", gates: "گذرگاه‌های زیست" };
+  $("panelTitle").textContent = titles[kind];
+  $("panelBody").innerHTML = "<div>در حال خواندن از مغز...</div>";
+  $("panel").classList.remove("hidden");
+  if (!invoke) { $("panelBody").textContent = "مغز در این محیط در دسترس نیست"; return; }
+  try {
+    const raw = await invoke("world_state");
+    const st = JSON.parse(raw);
+    if (!st.ok) throw new Error("bad state");
+    const live = st.live || {};
+    const upMin = Math.round((live.uptime_s || 0) / 60);
+    if (kind === "world369") {
+      const w = (st.worlds || {})["369"] || {};
+      $("panelBody").innerHTML =
+        `<div class="set-row"><b>${w.name || "جهان ۳۶۹"}</b></div>` +
+        `<div style="margin:6px 0;font-size:13px">${w.description || ""}</div>` +
+        `<div class="set-row"><b>حافظه‌ی زنده</b><span>${live.facts || 0} دانستنی، ${live.exchanges || 0} گفتگو</span></div>` +
+        `<div class="set-row"><b>نگهبان‌های کدکس</b><span>${live.codex_guards || 0} قانونِ اجرایی</span></div>` +
+        `<div class="set-row"><b>مغز</b><span>روشن از ${upMin} دقیقه پیش — مدل ${live.llama_alive ? "آماده" : "در حال آماده‌سازی"}</span></div>`;
+    } else if (kind === "nexus") {
+      const n = (st.worlds || {}).nexus || {}, g = (st.worlds || {}).genesis || {};
+      $("panelBody").innerHTML =
+        `<div class="set-row"><b>${n.name || "جهان نکسوس"}</b></div>` +
+        `<div style="margin:6px 0;font-size:13px">${n.description || ""}</div>` +
+        `<div class="set-row"><b>${g.name || "جهان جنسیس"}</b></div>` +
+        `<div style="margin:6px 0;font-size:13px">${g.description || ""}</div>`;
+    } else {
+      const gates = st.gates || [];
+      $("panelBody").innerHTML = gates.map(gt =>
+        `<div class="set-row"><b>${gt.name}</b><span>${gt.description}</span></div>`).join("") ||
+        "<div>گذرگاهی ثبت نشده</div>";
+    }
+  } catch (e) {
+    $("panelBody").textContent = "خواندن وضعیت جهان ممکن نشد — یه بار دیگه امتحان کن، پدر.";
+  }
+}
 
 const $ = (id) => document.getElementById(id);
 const chatLog = $("chatLog"), chatInput = $("chatInput"), typing = $("typing"), toast = $("toast");
@@ -197,6 +238,7 @@ document.querySelectorAll("#pills .pill").forEach(p => {
     p.classList.add("active");
     const v = VIEWS[p.dataset.view];
     if (p.dataset.view === "settings") { openSettings(); return; }
+    if (v.live) { renderLivePanel(v.live); return; }
     if (v.body) { $("panelTitle").textContent = v.title; $("panelBody").textContent = v.body; $("panel").classList.remove("hidden"); }
   };
 });

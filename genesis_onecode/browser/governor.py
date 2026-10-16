@@ -85,7 +85,7 @@ class BrowserGovernor:
         self.config = config or GovernorConfig()
         if not 1 <= self.config.max_concurrent <= 8:
             raise ValueError("max_concurrent must be 1..8")
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock: _log re-acquires inside note_yz_decision
         self._leases: dict[str, Lease] = {}
         self._queue: deque[str] = deque()
         self._ledger_path = self.config.app_data_dir / "browser_ledger.jsonl"
@@ -207,6 +207,25 @@ class BrowserGovernor:
         self._log("approval", lease_id,
                   f"{action} {'APPROVED' if approved else 'DENIED'} {detail}")
         return approved
+
+    def note_yz_decision(self, lease_id: str, action: str,
+                         approved: bool) -> bool:
+        """Apply YZ's async verdict to a lease's cached approval.
+
+        The governor denies sensitive actions fail-closed at attempt time and
+        files an approval request; when YZ later approves, this flips the
+        cached verdict so the agent's retry succeeds. Returns False when the
+        lease is unknown.
+        """
+        with self._lock:
+            lease = self._leases.get(lease_id)
+            if lease is None:
+                return False
+            lease.approvals[action] = (ApprovalState.APPROVED if approved
+                                       else ApprovalState.DENIED)
+            self._log("yz_decision", lease_id,
+                      f"{action} {'APPROVED' if approved else 'DENIED'} by YZ")
+            return True
 
     # ---- introspection ----------------------------------------------------
     def status(self) -> dict:

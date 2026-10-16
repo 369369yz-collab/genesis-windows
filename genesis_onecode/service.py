@@ -41,6 +41,23 @@ _browser_gov = None
 _browser_svc = None
 
 
+def _yz_approval_callback(lease, action: str, detail: str) -> bool:
+    """Governor hook for sensitive browser actions.
+
+    Fail-closed and async: a previously recorded YZ approval returns True;
+    otherwise an approval request is filed for YZ and the action is DENIED
+    for now. When YZ approves (POST /approvals/decide), the governor's
+    cached verdict flips and the agent's retry succeeds.
+    """
+    from brain import approvals as _appr
+    if _appr.is_approved(lease.lease_id, action):
+        return True
+    owner = lease.owner or ""
+    agent_id = owner[6:] if owner.startswith("agent-") else owner
+    _appr.request_approval(lease.lease_id, action, detail, agent_id)
+    return False
+
+
 def _browser():
     """Return (governor, service), creating them on first use."""
     global _browser_gov, _browser_svc
@@ -52,7 +69,8 @@ def _browser():
         from browser.service import BrowserService
         data_dir = _Path(os.environ.get("GENESIS_DATA_DIR", "genesis_data"))
         chrome = os.environ.get("GENESIS_CHROMIUM_EXE", "")
-        gov = BrowserGovernor(GovernorConfig(app_data_dir=data_dir))
+        gov = BrowserGovernor(GovernorConfig(
+            app_data_dir=data_dir, approval_callback=_yz_approval_callback))
         svc = BrowserService(gov,
                              chromium_path=_Path(chrome) if chrome else None)
         _browser_gov, _browser_svc = gov, svc
@@ -104,7 +122,7 @@ def _agent_browser_fn(agent_id: str, action: str, params: str) -> str:
                 return lid
             except Exception:
                 pass
-        lease = gov.acquire(owner=f"agent:{agent_id}", purpose="genius mission")
+        lease = gov.acquire(owner=f"agent-{agent_id}", purpose="genius mission")
         with _agent_lease_lock:
             _agent_leases[agent_id] = lease.lease_id
         return lease.lease_id
@@ -245,6 +263,21 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 from brain import womb as _womb
                 self._json({"ok": True, "pending": _womb.pending_missions()})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+        elif self.path == "/approvals/pending":
+            # YZ's approval inbox — the gates he must decide.
+            try:
+                from brain import approvals as _appr
+                self._json({"ok": True, "pending": _appr.pending()})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+        elif self.path == "/income/ledger":
+            # The honest books — every confirmed income with evidence.
+            try:
+                from brain import income as _inc
+                self._json({"ok": True, "ledger": _inc.ledger(),
+                            "total": _inc.total()})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
         elif self.path == "/world/state":            # Live world-state: true world knowledge + real runtime stats.
@@ -449,6 +482,54 @@ class Handler(BaseHTTPRequestHandler):
                 m = _womb.add_mission(str(body["title"]),
                                       str(body.get("detail", "")))
                 self._json({"ok": True, "mission": m})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/agents/hunt":
+            # The wolf hunt: generate income-seeking missions for the womb.
+            try:
+                from brain import income as _inc
+                created = _inc.hunt()
+                self._json({"ok": True, "missions": created})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/approvals/decide":
+            # YZ's verdict. On approval, the governor's cached denial flips
+            # so the agent's retry succeeds.
+            body = self._read_json_body()
+            if not body or not body.get("id"):
+                self._json({"ok": False, "error": "id required"}, 400)
+                return
+            try:
+                from brain import approvals as _appr
+                rec = _appr.decide(body["id"], body.get("approved") is True)
+                if rec is None:
+                    self._json({"ok": False, "error": "unknown approval"}, 404)
+                    return
+                if rec["status"] == "approved":
+                    gov, _ = _browser()
+                    gov.note_yz_decision(rec["lease_id"], rec["action"], True)
+                self._json({"ok": True, "approval": rec})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+            return
+        if self.path == "/income/record":
+            # Confirmed income only — evidence required, no exceptions.
+            body = self._read_json_body()
+            if not body or not body.get("agent_id"):
+                self._json({"ok": False, "error": "agent_id required"}, 400)
+                return
+            try:
+                from brain import income as _inc
+                r = _inc.record_income(
+                    str(body["agent_id"]), float(body.get("amount", 0)),
+                    str(body.get("currency", "USD")),
+                    str(body.get("source", "")), str(body.get("evidence", "")),
+                    str(body.get("mission_id", "")))
+                self._json({"ok": True, "income": r})
+            except (ValueError, TypeError) as e:
+                self._json({"ok": False, "error": str(e)}, 400)
             except Exception as e:
                 self._json({"ok": False, "error": str(e)}, 500)
             return

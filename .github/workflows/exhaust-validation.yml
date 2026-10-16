@@ -320,16 +320,27 @@ jobs:
           Write-Host "running uninstaller: $unExe /S"
           $up = Start-Process -FilePath $unExe -ArgumentList "/S" -PassThru
           $up | Wait-Process -Timeout 600 -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 10
+          # NSIS silent uninstall copies itself to %TEMP% and the parent process
+          # exits immediately while the copy keeps working — so the process
+          # handle is NOT a reliable completion signal (proven run 5: handle
+          # returned in <20s while a multi-GB uninstall was still running).
+          # Poll the registry until the key is really gone (same 10s-step
+          # pattern as the E5/E16b install waits). RED only if the key persists
+          # after 5 min — that would be a real uninstaller defect.
           $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
-          $left = $false
-          foreach ($h in $hives) {
-            $e = Get-ChildItem $h -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
-                 Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
-            if ($e) { $left = $true }
+          $gone = $false
+          for ($i = 0; $i -lt 30 -and -not $gone; $i++) {
+            $e = $null
+            foreach ($h in $hives) {
+              $e = Get-ChildItem $h -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                   Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($e) { break }
+            }
+            if (-not $e) { $gone = $true } else { Start-Sleep -Seconds 10 }
           }
-          if ($left) { Write-Error "EXHAUST-RED: GENESIS uninstall registry entry still present after silent uninstall"; exit 1 }
+          if (-not $gone) { Write-Error "EXHAUST-RED: GENESIS uninstall registry entry still present 5 min after silent uninstall — real uninstaller defect"; exit 1 }
+          Write-Host "E16a PASS: uninstall clean (registry entry gone)"
           $installDir = Join-Path $env:LOCALAPPDATA "GENESIS Final"
           if (Test-Path $installDir) {
             $files = (Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count

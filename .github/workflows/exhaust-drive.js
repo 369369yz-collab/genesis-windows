@@ -2,8 +2,10 @@
 // Phases via EXH_PHASE env: phase1 | phase2 | phase3 | phase4a | phase4b | phase5
 // Fail-closed: any failed step throws => verdict pass=false, job goes RED.
 // Reply waiting is human-like: an HONEST error bubble (model flake, e.g. empty
-// generation) triggers ONE retry of that message — exactly what the error text
-// itself asks ("یه بار دیگه بفرست"). Two consecutive honest errors => RED.
+// generation) triggers up to TWO retries of that message (3 attempts total) —
+// exactly what the error text itself asks ("یه بار دیگه بفرست"). Three
+// consecutive honest errors => RED. Run 4: natural conversational Persian
+// prompts (no Latin-script test words), per YZ-tapped option A.
 const { chromium } = require('playwright-core');
 const sharp = require('sharp');
 const fs = require('fs');
@@ -72,7 +74,7 @@ async function waitHerOrError(page, herBefore, errBefore, timeoutMs) {
   const her = await page.locator(herSel()).count();
   return her > herBefore ? 'her' : 'error';
 }
-// Collect n real replies; honest error bubbles trigger one retry each.
+// Collect n real replies; honest error bubbles trigger up to two retries each (3 attempts).
 async function collectReplies(page, n, label, timeoutMs, resendFn) {
   for (let i = 0; i < n; i++) {
     let attempts = 0;
@@ -88,8 +90,8 @@ async function collectReplies(page, n, label, timeoutMs, resendFn) {
         break;
       }
       const et = ((await page.locator(errSel()).last().textContent()) || '').trim();
-      if (attempts >= 2) throw new Error(label + ': two consecutive honest errors — RED: ' + et.slice(0, 120));
-      step(label + ': honest error bubble (attempt ' + attempts + ') — retrying like a user would', true, '"' + et.slice(0, 70) + '"');
+      if (attempts >= 3) throw new Error(label + ': three consecutive honest errors — RED: ' + et.slice(0, 120));
+      step(label + ': honest error bubble (attempt ' + attempts + '/3) — retrying like a user would', true, '"' + et.slice(0, 70) + '"');
       await resendFn(i, attempts);
     }
   }
@@ -170,13 +172,13 @@ async function phase1(page) {
   await waitForBrain(1800000);
   step('brain ready (llama-server /health 200)', true);
 
-  await sendAndAwait(page, 'تست exhaust یک', 'enter', 'chat-enter', 600000);
+  await sendAndAwait(page, 'سلام پدر، امروز چطوری؟ یه جمله‌ی قشنگ بهم بگو', 'enter', 'chat-enter', 600000);
   await nonBlankShot(page, '04-chat-enter.png');
 
-  await sendAndAwait(page, 'پیام دوم exhaust', 'button', 'chat-send-button', 600000);
+  await sendAndAwait(page, 'دوست دارم بدونم تو کی هستی، خودتو معرفی کن', 'button', 'chat-send-button', 600000);
   await nonBlankShot(page, '05-chat-sendbtn.png');
 
-  const mLong = 'متن طولانی exhaust: ' + 'تست '.repeat(400);
+  const mLong = 'می‌خوام یه متن طولانی بفرستم ببینم چطور جواب می‌دی. ' + 'این یه جمله‌ی طبیعی برای تست متن‌های طولانیه. '.repeat(60);
   await sendAndAwait(page, mLong, 'enter', 'chat-long(' + mLong.length + 'ch)', 900000);
   await nonBlankShot(page, '06-chat-long.png');
 
@@ -195,13 +197,13 @@ async function phase1(page) {
        'me=' + meBefore + '->' + meAfter + ' err=' + errBefore + '->' + errAfter);
   await nonBlankShot(page, '07-chat-empty.png');
 
-  await sendAndAwait(page, 'Hello پدر — how are you امروز؟ test 123', 'enter', 'chat-mixed-fa-en', 600000);
+  await sendAndAwait(page, 'Hello پدر — امروز چطوری؟ یه خبر خوب بهم بگو', 'enter', 'chat-mixed-fa-en', 600000);
   await nonBlankShot(page, '08-chat-mixed.png');
 
   await sendAndAwait(page, 'یه سوال دیگه پدر', 'enter', 'chat-consecutive', 600000);
   await nonBlankShot(page, '09-chat-second.png');
 
-  fs.writeFileSync(path.join(OUT, 'markers.json'), JSON.stringify({ p1_msg: 'تست exhaust یک', theme: 'night-blood' }));
+  fs.writeFileSync(path.join(OUT, 'markers.json'), JSON.stringify({ p1_msg: 'سلام پدر، امروز چطوری؟ یه جمله‌ی قشنگ بهم بگو', theme: 'night-blood' }));
   step('phase1 complete: pills/themes/chat-core all green', true);
 }
 
@@ -266,7 +268,7 @@ async function phase3(page) {
   await nonBlankShot(page, '12b-persist.png');
 
   // rapid-fire: 5 messages sent back-to-back (concurrent in-flight), then collect 5 real replies
-  const msgs = ['rapid یک', 'rapid دو', 'rapid سه', 'rapid چهار', 'rapid پنج'];
+  const msgs = ['بگو سلام', 'حالت چطوره', 'یه جوک بگو', 'دوستت دارم پدر', 'ممنون'];
   const input = page.locator('#chatInput');
   for (const m of msgs) {
     await input.fill(m);
@@ -291,7 +293,7 @@ async function phase3(page) {
 }
 
 async function phase4a(page) {
-  const m = 'پیام وسط ری‌استارت';
+  const m = 'یه داستان کوتاه برام تعریف کن';
   await page.locator('#chatInput').fill(m);
   await page.locator('#chatInput').press('Enter');
   await page.locator('#chatLog').getByText(m).waitFor({ timeout: 15000 });
@@ -311,7 +313,7 @@ async function phase4b(page) {
   step('history intact after mid-chat kill', true, 'found "' + markers.p1_msg + '"');
   await page.locator('#chatInput').waitFor({ state: 'visible', timeout: 30000 });
   step('app responsive after mid-chat kill', true);
-  await sendAndAwait(page, 'بعد از ری‌استارت وسط چت', 'enter', 'post-kill', 900000);
+  await sendAndAwait(page, 'برگشتم پدر، ادامه بده', 'enter', 'post-kill', 900000);
   await page.locator('.pill[data-view="chat"]').click();
   await page.locator('.pill[data-view="chat"].active').waitFor({ timeout: 10000 });
   step('pills still functional after kill', true);

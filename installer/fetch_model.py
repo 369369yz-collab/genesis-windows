@@ -1,7 +1,13 @@
 """Fetch the local LLM + llama-server for GENESIS Full (Windows CI).
 
 Pins come from genesis_onecode/brain/pins.json (single source of truth):
-- Qwen3-8B-Q4_K_M.gguf @ pinned HF commit, SHA-256 verified after download.
+- The pinned local LLM (see pins.json local_llm.name), SHA-256 verified
+  after download. NOTE: the current pin (GENESIS 369 v1, brain-model-v2)
+  is our own fine-tune and is NOT published on Hugging Face — it ships as
+  verified parts on this repo's GitHub release and the app downloads it on
+  first boot via brain/model_manifest.json. fetch_model() therefore only
+  downloads a model when the pin carries an hf_repo/hf_commit source, and
+  fails closed with an explanation otherwise.
 - llama.cpp release b11583 (Windows Vulkan build) -> llama-server.exe.
 
 Any hash mismatch => hard failure. Nothing unverified ships.
@@ -43,6 +49,14 @@ def fetch_model(out_dir: Path) -> Path:
     pin = PINS["local_llm"]
     out_dir.mkdir(parents=True, exist_ok=True)
     dest = out_dir / pin["name"]
+    if not (pin.get("hf_repo") and pin.get("hf_commit")):
+        raise SystemExit(
+            "FATAL: pinned model %s has no Hugging Face source in pins.json. "
+            "It is distributed as verified parts on the %s GitHub release "
+            "(%s) and downloaded by the app on first boot — there is no "
+            "whole-file CI fetch for it." % (
+                pin["name"], pin.get("release_tag", "?"),
+                pin.get("release_repo", "?")))
     url = (f"https://huggingface.co/{pin['hf_repo']}/resolve/"
            f"{pin['hf_commit']}/{pin['name']}")
     if not dest.exists():

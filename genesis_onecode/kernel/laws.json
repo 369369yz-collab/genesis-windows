@@ -1,9 +1,9 @@
 {
  "generated_from": "CODEX.json",
  "counts": {
-  "codex": 168,
+  "codex": 170,
   "standing": 8,
-  "total": 176
+  "total": 178
  },
  "laws": [
   {
@@ -779,7 +779,7 @@
   {
    "id": "LAW-111",
    "name": "",
-   "text": "Every system record (disposition, quarantine entry, mission dispatch, patrol seal, law enactment) carries the REAL write time. A record timestamped materially ahead of the clock (>120s) is fabrication (LAW-105 class). Gate content_team/yz_agent/timestamp_gate.py fail-closes future-dated records. Past records are NOT rewritten — history stands, future is enforced.",
+   "text": "Every system record (disposition, quarantine entry, mission dispatch, patrol seal, law enactment) carries the REAL write time, and this timestamp-honesty rule is enforced fail-closed and never weakened. A record timestamped materially ahead of the clock (>120s) is fabrication (LAW-105 class). Gate content_team/yz_agent/timestamp_gate.py fail-closes future-dated records. Past records are NOT rewritten — history stands, future is enforced.",
    "source": "CODEX.json chapter ? (status: active)",
    "enforced_by": "content_team/yz_agent/timestamp_gate.py"
   },
@@ -939,8 +939,8 @@
   },
   {
    "id": "LAW-134",
-   "name": "DEAD-SEAT DETECTION — live worker seats carry max-silence thresholds; silence beyond is DEAD + escalation",
-   "text": "Every live worker seat carries a max-silence threshold by class (verifier 45 min, patrol/watch 60 min, temp mission 2h). A seat silent beyond its threshold is declared DEAD with a RED record and escalation. Standing roster/skill seats are excluded by roster tag — never by last_seen alone. The verifier seat was dead since Oct 9 (2 days) with no signal; that can never happen again.",
+   "name": "DEAD-SEAT DETECTION — live worker seats carry max-quiet thresholds; quiet beyond is DEAD + escalation",
+   "text": "Every live worker seat carries a max-quiet threshold by class (verifier 45 min, patrol/watch 60 min, temp mission 2h). A seat silent beyond its threshold is declared DEAD with a RED record and escalation. Standing roster/skill seats are excluded by roster tag — never by last_seen alone. The verifier seat was dead since Oct 9 (2 days) with no signal; that can never happen again.",
    "source": "CODEX.json chapter VIII (status: active)",
    "enforced_by": "content_team/ops_watch/seat_watch.py"
   },
@@ -1124,14 +1124,14 @@
    "name": "REAL-PRODUCT LAW — everything sold must be real, no filler, no inflated claims",
    "text": "YZ direct order 2026-10-13 ~12:34 Tehran: «هر چیزی میخوایم بفروشیم خواهشا واقعی باشه چون رضایت مشتری باید از ۱۰۰/۱۰۰ باشه» (everything we want to sell must be real, because customer satisfaction must be 100/100)",
    "source": "CODEX.json chapter revenue (status: active)",
-   "enforced_by": "pre-sale verification gate: deliverable inspected and counted before the page is considered sellable; violations quarantined"
+   "enforced_by": "GATE"
   },
   {
    "id": "LAW-161",
    "name": "WOLF LAW — in earning money be a wolf, not a sheep",
    "text": "YZ direct order 2026-10-13 ~13:10 Tehran: «یه قانون مهم باید بهت یاد بدم تو پول دراوردن چون تمام پول دراوردن رو تو باید انجام بدی. تو پول دراوردن باید گرگ باشی نه بَره» (I must teach you an important law about making money, because ALL the money-making is on you. In making money you must be a wolf, not a sheep.)",
    "source": "CODEX.json chapter revenue (status: active)",
-   "enforced_by": "revenue agents operate with wolf posture under Agent YZ; passivity in an income track is a correctable failure"
+   "enforced_by": "GATE"
   },
   {
    "id": "LAW-162",
@@ -1181,6 +1181,20 @@
    "text": "Claude's answer §7 law 2, admitted via Agent YZ ruling 2026-10-13 14:36: «Keep changes small and reviewable; don't let an agent's \"done\" replace a diff review.»",
    "source": "CODEX.json chapter VIII (status: active)",
    "enforced_by": "GATE"
+  },
+  {
+   "id": "LAW-169",
+   "name": "FIX-FIRST — all known problems resolved before new creation begins",
+   "text": "YZ direct 2026-10-12 ~02:51 Tehran («ما قبل از کد نویسی باید تمامی مشکلات رو برطرف کنیم و بعد شروع کنیم به خلق جهان، بخاطر اینکه دیگه هیچ مشکلی به وجود نیاد»)",
+   "source": "CODEX.json chapter II (status: active)",
+   "enforced_by": "PROCESS"
+  },
+  {
+   "id": "LAW-170",
+   "name": "PRIVACY-FIRST — YZ's personal information never goes to third-party platforms",
+   "text": "YZ direct 2026-10-13 ~11:55 Tehran («من دوس ندارم اطلاعات شخصیم بره تو سایت اونا»)",
+   "source": "CODEX.json chapter IX (status: active)",
+   "enforced_by": "PROCESS"
   },
   {
    "id": "STANDING-01",

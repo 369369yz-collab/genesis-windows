@@ -4,7 +4,7 @@
 # Trigger: workflow_dispatch (Actions tab > Run workflow).
 #
 # Downloads the pinned model, splits it into 512MB NSIS-safe parts,
-# and publishes them as assets on the `brain-model-v1` release.
+# and publishes them as assets on the `brain-model-v2` release.
 # Also uploads model_manifest.json (part hashes + URLs) as a release
 # asset AND prints it for committing to genesis_onecode/brain/.
 #
@@ -24,7 +24,7 @@ permissions:
   contents: write
 
 env:
-  MODEL_RELEASE_TAG: brain-model-v1
+  MODEL_RELEASE_TAG: brain-model-v2
 
 jobs:
   prepare-model:

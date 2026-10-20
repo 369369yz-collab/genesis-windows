@@ -9,12 +9,15 @@ Idempotent: skips work when parts already exist and are complete.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = REPO_ROOT / "app" / "src-tauri" / "resources" / "models"
-MODEL_NAME = "Qwen3-8B-Q4_K_M.gguf"
+# Model identity comes from pins.json (single source of truth).
+_PINS = json.loads((REPO_ROOT / "genesis_onecode" / "brain" / "pins.json").read_text())
+MODEL_NAME = _PINS["local_llm"]["name"]
 PART_SIZE = 512 * 1024 * 1024  # 512 MB — safely under makensis mmap limits
 
 

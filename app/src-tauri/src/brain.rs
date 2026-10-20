@@ -30,8 +30,8 @@ const LLAMA_PORT: u16 = 8080;
 const BRAIN_PORT: u16 = 17369;
 /// Pinned SHA-256 of the model (genesis_onecode/brain/pins.json).
 const MODEL_SHA256: &str =
-    "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785";
-/// Full GPU offload: 8B Q4_K_M (~4.9 GiB) fits the RTX 5070 12 GB comfortably.
+    "1a762d6d2c9cd7c34d2497dad1cbb67b4f77f43dccb8cd1efe7f925b9a7e4371";
+/// Full GPU offload: 8B Q5_K_M (~5.45 GiB) fits the RTX 5070 12 GB comfortably.
 /// This is the DEFAULT for --n-gpu-layers; the GENESIS_N_GPU_LAYERS env var
 /// overrides it at runtime (0 = CPU-only, for GPU-less machines/CI runners).
 const N_GPU_LAYERS: &str = "99";

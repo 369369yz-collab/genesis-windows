@@ -18,7 +18,27 @@ import threading
 import uuid
 from pathlib import Path
 
-_WORKSPACE = Path(__file__).resolve().parents[3]  # ~/workspace (genesis_final is a sibling of genesis_build)
+def _find_workspace() -> Path:
+    """Locate the workspace that holds genesis_final/nexus/proto.py.
+
+    Resolution order:
+      1. GENESIS_WORKSPACE env var (explicit override).
+      2. Walk upward from this file — the tree may be checked out at any
+         depth (e.g. genesis_creation/repo/genesis_onecode/veins/), so a
+         fixed parents[N] is wrong; search for the real marker instead.
+      3. Legacy fallback: parents[3] (the original ~/workspace layout).
+    """
+    env = os.environ.get("GENESIS_WORKSPACE")
+    if env:
+        return Path(env).expanduser()
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "genesis_final" / "nexus" / "proto.py").is_file():
+            return parent
+    return here.parents[3]
+
+
+_WORKSPACE = _find_workspace()
 if str(_WORKSPACE) not in sys.path:
     sys.path.insert(0, str(_WORKSPACE))
 

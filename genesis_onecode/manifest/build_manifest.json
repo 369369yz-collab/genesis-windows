@@ -45,12 +45,12 @@
  },
  "pins_verification": {
   "verdict": "MATCH",
-  "expected_sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
-  "actual_sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
-  "expected_size_bytes": 5027783488,
-  "actual_size_bytes": 5027783488,
+  "expected_sha256": "1a762d6d2c9cd7c34d2497dad1cbb67b4f77f43dccb8cd1efe7f925b9a7e4371",
+  "actual_sha256": "1a762d6d2c9cd7c34d2497dad1cbb67b4f77f43dccb8cd1efe7f925b9a7e4371",
+  "expected_size_bytes": 5851112800,
+  "actual_size_bytes": 5851112800,
   "size_match": true,
-  "model": "Qwen3-8B-Q4_K_M.gguf",
+  "model": "genesis_369_v1_Q5_K_M.gguf",
   "pins_source": "/home/hatch/workspace/genesis_final/brain/pins.json"
  },
  "gates": [

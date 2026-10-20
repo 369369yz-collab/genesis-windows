@@ -21,8 +21,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = REPO_ROOT / "app" / "src-tauri" / "resources" / "models"
 MANIFEST = REPO_ROOT / "genesis_onecode" / "brain" / "model_manifest.json"
+PINS_PATH = REPO_ROOT / "genesis_onecode" / "brain" / "pins.json"
 
-MODEL_NAME = "Qwen3-8B-Q4_K_M.gguf"
+# Model identity comes from pins.json (single source of truth) — never
+# hardcoded here, so a model refresh cannot silently revert the manifest.
+_PINS = json.loads(PINS_PATH.read_text())
+MODEL_NAME = _PINS["local_llm"]["name"]
 
 
 def sha256_file(path: Path) -> str:
@@ -34,15 +38,21 @@ def sha256_file(path: Path) -> str:
 
 
 def main() -> int:
-    release_tag = os.environ.get("MODEL_RELEASE_TAG", "brain-model-v1")
-    repo = os.environ.get("MODEL_RELEASE_REPO", "369369yz-collab/genesis-windows")
+    release_tag = os.environ.get(
+        "MODEL_RELEASE_TAG", _PINS["local_llm"].get("release_tag", ""))
+    repo = os.environ.get(
+        "MODEL_RELEASE_REPO",
+        _PINS["local_llm"].get("release_repo", "369369yz-collab/genesis-windows"))
+    if not release_tag:
+        print("FATAL: no release tag (MODEL_RELEASE_TAG unset and pins.json "
+              "local_llm.release_tag missing)", file=sys.stderr)
+        return 1
     parts = sorted(MODELS_DIR.glob(MODEL_NAME + ".part*"))
     if not parts:
         print(f"FATAL: no model parts in {MODELS_DIR}", file=sys.stderr)
         return 1
-    pins = json.loads((REPO_ROOT / "genesis_onecode" / "brain" / "pins.json").read_text())
-    assembled_sha = pins["local_llm"]["sha256"]
-    assembled_size = pins["local_llm"]["size_bytes"]
+    assembled_sha = _PINS["local_llm"]["sha256"]
+    assembled_size = _PINS["local_llm"]["size_bytes"]
     manifest = {
         "release_tag": release_tag,
         "assembled_name": MODEL_NAME,

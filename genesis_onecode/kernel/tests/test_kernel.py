@@ -6,7 +6,7 @@ Coverage:
   3. FabricationError on evidence-less report_completion (kernel claims_ledger)
   4. honesty.py failure honesty: a failing check surfaces as FAILED, never a
      silent pass
-  5. laws.json count reconciliation: 168 CODEX in + 8 standing = 176 out
+  5. laws.json count reconciliation: 170 CODEX in + 8 standing = 178 out
 """
 
 from __future__ import annotations
@@ -207,11 +207,11 @@ class TestLawsReconciliation(unittest.TestCase):
             doc = json.load(f)
         n_codex = len(codex["laws"])
         counts = doc["counts"]
-        self.assertEqual(n_codex, 168, "CODEX law count changed — reconcile before shipping")
+        self.assertEqual(n_codex, 170, "CODEX law count changed — reconcile before shipping")
         self.assertEqual(counts["codex"], n_codex)
         self.assertEqual(counts["standing"], 8)
-        self.assertEqual(counts["total"], 176)
-        self.assertEqual(len(doc["laws"]), 176)
+        self.assertEqual(counts["total"], 178)
+        self.assertEqual(len(doc["laws"]), 178)
         self.assertEqual(counts["codex"] + counts["standing"], counts["total"])
 
     def test_ids_unique_and_ordered(self):
@@ -219,8 +219,8 @@ class TestLawsReconciliation(unittest.TestCase):
             doc = json.load(f)
         ids = [l["id"] for l in doc["laws"]]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(ids[:168], ["LAW-%03d" % i for i in range(1, 169)])
-        self.assertEqual(ids[168:], ["STANDING-%02d" % i for i in range(1, 9)])
+        self.assertEqual(ids[:170], ["LAW-%03d" % i for i in range(1, 171)])
+        self.assertEqual(ids[170:], ["STANDING-%02d" % i for i in range(1, 9)])
 
     def test_each_record_has_required_fields(self):
         with open(LAWS_PATH, encoding="utf-8") as f:

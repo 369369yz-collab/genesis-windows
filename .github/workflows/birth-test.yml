@@ -307,10 +307,10 @@ jobs:
           $log = "$env:BIRTH_WORK\birth_log.md"
           function Stamp { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'") }
           function Blog($step, $msg) { "- [$(Stamp)] **$step** — $msg" | Out-File -FilePath $log -Append -Encoding utf8; Write-Host "[$step] $msg" }
-          $rel = "https://github.com/369369yz-collab/genesis-windows/releases/tag/brain-model-v1"
+          $rel = "https://github.com/369369yz-collab/genesis-windows/releases/tag/brain-model-v2"
           try {
             $r = Invoke-WebRequest $rel -TimeoutSec 20 -UseBasicParsing
-            if ($r.StatusCode -eq 200) { Blog "B9" "PASS: brain-model-v1 release reachable (first-boot download path viable)." }
+            if ($r.StatusCode -eq 200) { Blog "B9" "PASS: brain-model-v2 release reachable (first-boot download path viable)." }
             else { Blog "B9" "BOUNDARY: release page status $($r.StatusCode)" }
           } catch { Blog "B9" "BOUNDARY: release not reachable from runner ($($_.Exception.Message)) — first-boot download untested here, not red." }
           $mf = Get-ChildItem $env:INSTALL_DIR -Recurse -File -Filter "model_manifest.json" -ErrorAction SilentlyContinue | Select-Object -First 1

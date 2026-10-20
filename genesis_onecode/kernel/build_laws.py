@@ -2,9 +2,9 @@
 """build_laws.py — compile kernel/laws.json from CODEX.json + the 8 standing laws.
 
 Mathematical precision (counts in = counts out):
-    N(CODEX laws) = 168  ->  168 entries in
+    N(CODEX laws) = 170  ->  170 entries in
     8 standing laws (not yet in CODEX per Track 5, finding F-03)
-    => laws.json MUST hold exactly 176 records. The builder asserts this.
+    => laws.json MUST hold exactly 178 records. The builder asserts this.
 """
 
 from __future__ import annotations
@@ -134,7 +134,7 @@ def build():
     assert codex_counts.get("total") == n_codex, (
         "CODEX self-count mismatch: counts.total=%r vs read %d"
         % (codex_counts.get("total"), n_codex))
-    assert n_codex == 168, "expected 168 CODEX laws, read %d" % n_codex
+    assert n_codex == 170, "expected 170 CODEX laws, read %d" % n_codex
     assert n_standing == 8, "expected 8 standing laws, have %d" % n_standing
 
     out = codex_recs + [
@@ -144,7 +144,7 @@ def build():
         }
         for s in STANDING_LAWS
     ]
-    assert len(out) == 176, "counts in != counts out: %d" % len(out)
+    assert len(out) == 178, "counts in != counts out: %d" % len(out)
 
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump({

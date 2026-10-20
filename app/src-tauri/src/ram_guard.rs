@@ -1,6 +1,6 @@
 //! RAM budget guard — pre-birth fix for W1 (local resource budget).
 //!
-//! The full stack (Qwen3-8B Q4_K_M + llama-server + whisper + Piper +
+//! The full stack (GENESIS 369 v1 Q5_K_M + llama-server + whisper + Piper +
 //! Tauri/WebView2 + three.js VRM + Chromium hands + 80 workflows) can exceed
 //! 16 GB under nominal load, and Windows would OOM-kill llama-server or the
 //! UI. This module implements the negotiated-degradation policy instead:

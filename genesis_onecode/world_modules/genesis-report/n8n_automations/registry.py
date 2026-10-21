@@ -1,0 +1,26 @@
+# Auto-generated n8n workflow registry for genesis-report (batch-1 + batch-2 merged)
+REGISTRY = { '0001_Telegram_Schedule_Automation_Scheduled': { 'batch': 2,
+                                                   'categories': [],
+                                                   'disposition': 'SLOTS',
+                                                   'llm': False,
+                                                   'name': '#️⃣Nostr #damus AI Powered Reporting + '
+                                                           'Gmail + Telegram',
+                                                   'slots': [ 'n8n-nodes-base.gmail',
+                                                              'n8n-nodes-base.telegram'],
+                                                   'triggers': [ 'manualTrigger',
+                                                                 'scheduleTrigger']},
+  '1741_Telegram_Gumroad_Create_Webhook': { 'batch': 2,
+                                            'categories': [],
+                                            'disposition': 'SLOTS',
+                                            'llm': False,
+                                            'name': '2. Add Beehiiv newsletter subscribers from '
+                                                    'Gumroad sales',
+                                            'slots': [ 'n8n-nodes-base.googleSheets',
+                                                       'n8n-nodes-base.telegram'],
+                                            'triggers': ['gumroadTrigger']},
+  '2537': { 'categories': ['Social Media'],
+            'disposition': 'SLOTS',
+            'llm': False,
+            'name': 'Simple social: Instagram single image post with Facebook API',
+            'slots': [],
+            'triggers': ['When clicking ‘Test workflow’']}}

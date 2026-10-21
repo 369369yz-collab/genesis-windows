@@ -23,12 +23,21 @@ for it — traits that succeed propagate through replication.
 Persistence: SQLite tables `agents` and `missions` in the same genesis.db
 as living memory. Stdlib only.
 
-Birth randomness (Phase 2 embed, 2026-10-21): trait mutation draws from
-the vendored quantum seed layer (brain/quantum, fail-closed seed hub)
-when it can certify a genuinely quantum mother seed; otherwise it falls
-back to stdlib random. Every agent record carries its `seed_source`
-provenance — "quantum-certified" or "degraded-stdlib" — never a silent
-claim (QUANTUM-NAME INTEGRITY, YZ 2026-10-11).
+Birth randomness (Phase 2 embed, 2026-10-21; Phase 3, same day): trait
+mutation draws from the vendored quantum seed layer (brain/quantum,
+fail-closed seed hub) when it can certify a genuinely quantum mother
+seed; when the only mother is the first-run local-CSPRNG one
+(brain/quantum/first_run.py), the draw still goes through the hub under
+its true source label; otherwise it falls back to stdlib random. Every
+agent record carries its `seed_source` provenance —
+"quantum-certified", "local-csprng", or "degraded-stdlib" — never a
+silent claim (QUANTUM-NAME INTEGRITY, YZ 2026-10-11).
+
+Lifecycle claims (Phase 3 embed, 2026-10-21): births and mission
+completions are recorded as claims + evidence in the kernel claims
+ledger (kernel/claims_ledger.py) from this real path. The ledger
+AUDITS the womb; it never gates it — a ledger failure can never block
+a birth or a completion.
 """
 from __future__ import annotations
 
@@ -111,15 +120,24 @@ def _conn() -> sqlite3.Connection:
 # QUANTUM-NAME INTEGRITY (YZ, 2026-10-11): trait mutation at birth draws
 # from the vendored quantum seed layer (brain/quantum) through the
 # fail-closed seed hub. The womb registers as a quantum_required consumer,
-# so the hub only issues a draw when today's mother seed is genuinely
-# quantum (ANU QRNG). When certification is impossible — hub missing,
-# mother seed not quantum, hub halt — birth falls back to stdlib random
-# and the agent record says so: seed_source is "quantum-certified" or
-# "degraded-stdlib", never an unproven claim.
+# so the hub only issues a certified draw when today's mother seed is
+# genuinely quantum (ANU QRNG). When certification is impossible there
+# are two honest lower tiers, in order:
+#   1. "local-csprng" — today's mother is the first-run local-CSPRNG one
+#      (brain/quantum/first_run.py, provenance sidecar verified against
+#      the LAW-099 seal). The draw STILL goes through the hub, under a
+#      separate non-quantum consumer, and is labelled with the mother's
+#      true source. Never upgraded to "quantum-certified".
+#   2. "degraded-stdlib" — no usable mother at all (hub missing, mother
+#      is a relay/os.urandom fallback, hub halt): stdlib random, and the
+#      agent record says exactly that.
 
 _WOMB_CONSUMER = "genesis-womb"
 _WOMB_DOMAIN = "womb:mutation"
+_WOMB_LOCAL_CONSUMER = "genesis-womb-local"
+_WOMB_LOCAL_DOMAIN = "womb:mutation-local"
 SEED_QUANTUM = "quantum-certified"
+SEED_LOCAL = "local-csprng"
 SEED_DEGRADED = "degraded-stdlib"
 
 
@@ -137,12 +155,48 @@ def _load_seed_hub():
         return None
 
 
+def _local_csprng_rng(hub):
+    """Draw birth bytes from the first-run local-CSPRNG mother, via the hub.
+
+    Returns a random.Random, or None when today's mother is not the
+    verified first-run local one (sidecar + seal cross-checked by
+    brain.quantum.first_run.local_mother_info). The hub record for the
+    draw carries seed_source="local-csprng" and quantum=False — checked
+    again here before the label is ever used.
+    """
+    try:
+        from brain.quantum import first_run as _fr
+    except Exception:
+        try:
+            from quantum import first_run as _fr
+        except Exception:
+            return None
+    try:
+        if _fr.local_mother_info() is None:
+            return None
+        hub.register_consumer(
+            _WOMB_LOCAL_CONSUMER, "genesis_onecode/brain (GENIUS womb)",
+            _WOMB_LOCAL_DOMAIN, quantum_required=False,
+            priority="IMPORTANT",
+            wired_by="genesis-embed-phase3-2026-10-21")
+        out = hub.consume(_WOMB_LOCAL_CONSUMER, kind="bytes",
+                          domain=_WOMB_LOCAL_DOMAIN, n_bytes=32,
+                          context="womb trait mutation at birth "
+                                  "(local-csprng mother)")
+        rec = out["record"]
+        if rec.get("seed_source") != SEED_LOCAL or rec.get("quantum"):
+            return None
+        return random.Random(int.from_bytes(out["bytes"], "big"))
+    except Exception:
+        return None
+
+
 def _mutation_rng():
     """Return (rng, seed_source) for one birth's trait mutation.
 
-    rng is a random.Random seeded from certified quantum bytes when the
-    hub certifies, else None (caller uses stdlib random) with the
-    degraded provenance label.
+    rng is a random.Random seeded from hub bytes at the highest honest
+    tier available (quantum-certified, then local-csprng), else None
+    (caller uses stdlib random) with the degraded provenance label.
     """
     hub = _load_seed_hub()
     if hub is None:
@@ -158,13 +212,17 @@ def _mutation_rng():
         # Belt and braces: the hub's quantum_required gate already refuses
         # non-quantum draws; verify the record before claiming anything.
         if not out["record"].get("quantum"):
-            return None, SEED_DEGRADED
+            raise ValueError("hub draw not quantum-certified")
         return (random.Random(int.from_bytes(out["bytes"], "big")),
                 SEED_QUANTUM)
     except Exception:
         # HubError (incl. QuantumRequiredError), network failure inside
-        # the mother-seed fetch, state errors — all degrade honestly.
-        return None, SEED_DEGRADED
+        # the mother-seed fetch, state errors — try the local tier next.
+        pass
+    rng_local = _local_csprng_rng(hub)
+    if rng_local is not None:
+        return rng_local, SEED_LOCAL
+    return None, SEED_DEGRADED
 
 
 def _mutate_trait(parent_trait: str, rng=None) -> str:
@@ -174,6 +232,82 @@ def _mutate_trait(parent_trait: str, rng=None) -> str:
         return parent_trait
     choices = [t for t in _TRAITS if t != parent_trait]
     return r.choice(choices)
+
+
+# ---- lifecycle claims: the kernel ledger audits the womb -------------------
+# Phase 3 embed (2026-10-21): every birth and every mission completion
+# is reported to kernel/claims_ledger.py as a claim WITH evidence
+# (agent id, fitness, seed_source, mission ids) — the anti-fabrication
+# ledger hashes the evidence and accepts the completion, or refuses it.
+# Append-only, from this real path, and FAIL-SOFT by design: the ledger
+# audits the womb, it never gates it. If the kernel module is absent
+# (e.g. its truth_layer adapter cannot import on this machine) the
+# lifecycle proceeds exactly as before, unrecorded — never blocked.
+
+_claims_lock = threading.Lock()
+_claims_ledgers: dict = {}
+
+
+def _claims_db_path() -> str:
+    base = Path(os.environ.get("GENESIS_DATA_DIR", "genesis_data"))
+    return str(base / "kernel" / "claims_ledger.db")
+
+
+def _load_claims_module():
+    """Return the kernel claims_ledger module, or None if unavailable."""
+    try:
+        from kernel import claims_ledger as _cl
+        return _cl
+    except Exception:
+        pass
+    try:
+        import importlib.util
+        path = (Path(__file__).resolve().parent.parent
+                / "kernel" / "claims_ledger.py")
+        spec = importlib.util.spec_from_file_location(
+            "genesis_kernel_claims_ledger", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def claims_ledger():
+    """The shared ClaimsLedger for the current data dir, or None.
+
+    Public so the brain service can report the kernel block (stats)
+    from the very ledger the womb writes to. Guarded like everything
+    here: None when the kernel is unavailable.
+    """
+    try:
+        db_path = _claims_db_path()
+        with _claims_lock:
+            led = _claims_ledgers.get(db_path)
+            if led is None:
+                mod = _load_claims_module()
+                if mod is None:
+                    return None
+                led = mod.ClaimsLedger(db_path=db_path)
+                _claims_ledgers[db_path] = led
+            return led
+    except Exception:
+        return None
+
+
+def _record_claim(claim: str, evidence: dict) -> None:
+    """Append one lifecycle claim + evidence to the kernel ledger.
+
+    Never raises, never blocks: an auditing failure is swallowed so the
+    womb's real work (birth, completion) is untouched by it.
+    """
+    try:
+        led = claims_ledger()
+        if led is None:
+            return
+        led.report_completion(claim, evidence)
+    except Exception:
+        pass
 
 
 # ---- birth ---------------------------------------------------------------
@@ -211,6 +345,12 @@ def birth(parent_id: str | None = None, seed: str = "") -> dict:
                       f"Seed: {seed[:200]}")
     except Exception:
         pass
+    _record_claim(
+        f"agent {aid} born (gen {generation}, trait: {trait}, "
+        f"seed: {seed_source})",
+        {"event": "birth", "agent_id": aid, "name": name,
+         "trait": trait, "generation": generation, "fitness": 0.5,
+         "seed_source": seed_source, "parent_id": parent_id})
     return get_agent(aid)
 
 
@@ -328,7 +468,18 @@ def complete_mission(agent_id: str, mission_id: str, success: bool,
             f"{'succeeded' if success else 'failed'}. Notes: {notes[:300]}")
     except Exception:
         pass
-    return get_agent(agent_id)
+    rec = get_agent(agent_id)
+    if rec is not None:
+        _record_claim(
+            f"mission {mission_id} completed by agent {agent_id} "
+            f"({'success' if success else 'failed'}, "
+            f"fitness {rec['fitness']})",
+            {"event": "mission_completed", "agent_id": agent_id,
+             "mission_id": mission_id, "success": bool(success),
+             "fitness": rec["fitness"], "seed_source": rec["seed_source"],
+             "missions_done": rec["missions_done"],
+             "missions_ok": rec["missions_ok"]})
+    return rec
 
 
 # ---- natural selection ------------------------------------------------------

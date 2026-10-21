@@ -1,0 +1,2 @@
+# genesis-memory: no third-party dependencies.
+# stdlib only: sqlite3, json, hashlib, time, pathlib.

@@ -1,0 +1,28 @@
+{
+ "name": "genesis-station",
+ "version": "1.0.0",
+ "description": "Local persistent production job queue with worker execution and full SQLite history.",
+ "entry": "station_facade.py",
+ "factory": "StationModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "requirements.txt",
+  "station.py",
+  "station_facade.py",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "b31bb8b8152323b7ddf18c23dc3e93ca6af79ba080c7526f2787aad4e3770d4c",
+  "requirements.txt": "78486b65d94640809415577e2576f8989db4c93d22bcfd1961765c40b4056d2c",
+  "station.py": "3e7615621faec465e6254eef03a7ef222232ca52ccf0b18a7b7b08bae2fbffcc",
+  "station_facade.py": "910096f636a4c3e6630453d2b7d43c83aa788f241a73526640a87d5ef1de75ff",
+  "knowledge/__init__.py": "c630815de86f2d8d55800716eac351f4e1dfaa1449faf52add0fec88846b89ec",
+  "knowledge/registry.py": "d05e3f3eb060b086d5e0694e1cb0bc52bd761afc45c05e54bd677dfd0f33b4d2",
+  "knowledge/packs.json": "9f3908b677576108fa33da1fa4e3911e875c6d3093432803e859358773e598df",
+  "knowledge/test_knowledge.py": "a1c0dc25386233a4112f66ee27381eab550c0ef27fdce7e48da45e19e4534dd2"
+ }
+}

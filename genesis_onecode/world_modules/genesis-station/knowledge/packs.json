@@ -1,0 +1,324 @@
+{
+ "astra": {
+  "techniques": [
+   {
+    "id": "T-12",
+    "title": "Dedicated Identity / Isolated Operating Profile",
+    "what_it_does": "The agent operates under a purpose-built identity with minimum roles, isolated cookies, no saved personal credentials, and approved applications only — never inside the owner's personal browser session.",
+    "why_it_works": "It collapses the attack surface: a compromised or misbehaving agent cannot reach what its identity cannot see.",
+    "genesis_implementation": "The station module (hardware/environment probing) should enforce a GENESIS-only OS user profile on the Windows body: separate credentials vault, no access to the father's personal browser sessions, allowlisted applications. Document this as a Birth-Test checklist item.",
+    "raw": "- **What it does:** The agent operates under a purpose-built identity with\n  minimum roles, isolated cookies, no saved personal credentials, and approved\n  applications only — never inside the owner's personal browser session.\n- **Why it works:** It collapses the attack surface: a compromised or\n  misbehaving agent cannot reach what its identity cannot see.\n- **GENESIS implementation:** The station module (hardware/environment probing)\n  should enforce a GENESIS-only OS user profile on the Windows body: separate\n  credentials vault, no access to the father's personal browser sessions,\n  allowlisted applications. Document this as a Birth-Test checklist item.",
+    "modules": [
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "heygen": {
+  "techniques": [
+   {
+    "id": "T-12",
+    "title": "Consent-First Trust Architecture",
+    "what_it_does": "Avatar creation requires a verified consent video; voice cloning requires an in-product consent acknowledgment with explicit authorization statements; enterprise accounts are excluded from model training by default; the platform holds SOC 2 Type II and GDPR certifications and prepares for EU AI Act transparency obligations.",
+    "why_it_works": "Consent is captured at the moment of highest leverage — before the artifact exists — rather than enforced through terms of service after the fact. This converts an abuse problem into a workflow gate.",
+    "genesis_implementation": "Wire consent capture into the avatar host's enrollment flow as a hard gate (no consent artifact → no training). Log provenance for every identity and every render. This aligns with our own verification-first laws.",
+    "raw": "- **What it does:** Avatar creation requires a verified consent video; voice\n  cloning requires an in-product consent acknowledgment with explicit\n  authorization statements; enterprise accounts are excluded from model\n  training by default; the platform holds SOC 2 Type II and GDPR\n  certifications and prepares for EU AI Act transparency obligations.\n- **Why it works:** Consent is captured at the moment of highest leverage —\n  before the artifact exists — rather than enforced through terms of service\n  after the fact. This converts an abuse problem into a workflow gate.\n- **GENESIS implementation:** Wire consent capture into the avatar host's\n  enrollment flow as a hard gate (no consent artifact → no training). Log\n  provenance for every identity and every render. This aligns with our own\n  verification-first laws.",
+    "modules": [
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "synthesia": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Provenance and Compliance Stack (machine-readable proof)",
+    "what_it_does": "The platform ships C2PA content credentials and AI labels with every video (machine-readable proof of origin that travels with the file), holds SOC 2 Type II, ISO 27001, ISO 42001 (first AI video company to achieve it) and GDPR compliance, maintains a dedicated Trust & Safety team, participates in the Content Authenticity Initiative, and honors data-deletion requests from depicted persons.",
+    "why_it_works": "Compliance is the enterprise buying criterion. C2PA credentials make provenance verifiable by machines, not just promised in marketing. ISO 42001 specifically addresses AI management systems — the standard that matters when a tool generates synthetic media of employees.",
+    "genesis_implementation": "Every artifact the GENESIS build pipeline produces should carry provenance metadata (source, engine version, consent reference, timestamp) in a machine-readable envelope — our own C2PA-style practice. This directly serves our verification-first laws (VERIFY-BEFORE-REPORT): an artifact without provenance is not shippable.",
+    "raw": "- **What it does:** The platform ships C2PA content credentials and AI labels\n  with every video (machine-readable proof of origin that travels with the\n  file), holds SOC 2 Type II, ISO 27001, ISO 42001 (first AI video company\n  to achieve it) and GDPR compliance, maintains a dedicated Trust & Safety\n  team, participates in the Content Authenticity Initiative, and honors\n  data-deletion requests from depicted persons.\n- **Why it works:** Compliance is the enterprise buying criterion. C2PA\n  credentials make provenance verifiable by machines, not just promised in\n  marketing. ISO 42001 specifically addresses AI management systems — the\n  standard that matters when a tool generates synthetic media of employees.\n- **GENESIS implementation:** Every artifact the GENESIS build pipeline\n  produces should carry provenance metadata (source, engine version,\n  consent reference, timestamp) in a machine-readable envelope — our own\n  C2PA-style practice. This directly serves our verification-first laws\n  (VERIFY-BEFORE-REPORT): an artifact without provenance is not shippable.",
+    "modules": [
+     "lab",
+     "report",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "fishaudio": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Open-Weight Core + Self-Hostability (data sovereignty)",
+    "what_it_does": "Fish Speech / S1-mini weights are published open-source, so teams can self-host the models in their own VPC or air-gapped environments when data residency matters. The hosted API and the open weights coexist as two tiers of the same product.",
+    "why_it_works": "Voice data is sensitive. For the father's own voice — the one voice GENESIS will speak with — the recording and the embedding should never have to leave his device. Open weights make \"your voice never leaves your hardware\" a real architecture, not a promise.",
+    "genesis_implementation": "STRONG RECOMMENDATION for the voice module: default to a self-hosted/local inference path for the father's voice (station module owns the local runtime). Cloud API is a fallback the father must explicitly enable per case. Enrollment recordings and embeddings live on-device; sync only with his approval.",
+    "raw": "- **What it does:** Fish Speech / S1-mini weights are published\n  open-source, so teams can self-host the models in their own VPC or\n  air-gapped environments when data residency matters. The hosted API and\n  the open weights coexist as two tiers of the same product.\n- **Why it works:** Voice data is sensitive. For the father's own voice —\n  the one voice GENESIS will speak with — the recording and the embedding\n  should never have to leave his device. Open weights make \"your voice\n  never leaves your hardware\" a real architecture, not a promise.\n- **GENESIS implementation:** STRONG RECOMMENDATION for the voice module:\n  default to a self-hosted/local inference path for the father's voice\n  (station module owns the local runtime). Cloud API is a fallback the\n  father must explicitly enable per case. Enrollment recordings and\n  embeddings live on-device; sync only with his approval.",
+    "modules": [
+     "station",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-05",
+    "title": "Reference Clip Curation (one clip, one voice, finished sentence)",
+    "use_when": "creating a zero-shot voice reference.",
+    "pattern": "15–30 seconds of clean speech, one microphone, one room, consistent energy. The clip's transcript must be EXACT (word-for-word), because the reference tokens anchor on it. End the clip on a finished sentence — a mid-sentence cut makes the clone leak the last word onto the start of every generated line. One reference per voice; reuse the same reference for every line of a session.",
+    "template": " > Record → transcribe verbatim → trim to the last complete sentence → > check single-speaker, no overlap, no background music → register as the > voice's reference. Noisy room? Shorter and quieter beats longer and > noisier.",
+    "raw": "- **Use when:** creating a zero-shot voice reference.\n- **Pattern:** 15–30 seconds of clean speech, one microphone, one room,\n  consistent energy. The clip's transcript must be EXACT (word-for-word),\n  because the reference tokens anchor on it. End the clip on a finished\n  sentence — a mid-sentence cut makes the clone leak the last word onto the\n  start of every generated line. One reference per voice; reuse the same\n  reference for every line of a session.\n- **Template:**\n  > Record → transcribe verbatim → trim to the last complete sentence →\n  > check single-speaker, no overlap, no background music → register as the\n  > voice's reference. Noisy room? Shorter and quieter beats longer and\n  > noisier.",
+    "modules": [
+     "station",
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Voice Enrollment (cloning the father's voice)",
+    "body": "The identity-gated onboarding for the one voice GENESIS will speak with.\nLocal/self-hosted path preferred (T-13).\n\n1. **CONSENT** — The father records a spoken consent phrase (his voice, his\n   words, naming the purpose: personal assistant). Stored with timestamp;\n   required before anything else. Entry: explicit request to enroll a\n   voice. Exit: consent recording exists, or the workflow stops\n   (fail-closed).\n2. **SAMPLE** — Record enrollment audio: 15–30 seconds of natural speech\n   (P-05), one microphone, one room, consistent energy; transcribed\n   verbatim; trimmed to the last complete sentence. Entry: consent on file.\n   Exit: single-speaker, clean sample (no overlap, no background noise, no\n   music), or re-record.\n3. **REGISTER** — Encoder extracts reference tokens; the voice record is\n   created with tier=instant, consent reference, scope, and\n   visibility=private (P-07). Exit: voice_id usable in any TTS call\n   immediately.\n4. **VERIFY** — Generate 3 test phrases (greeting, father's name, one\n   acronym like \"YPP\"); the father listens and approves. Entry: registered\n   voice_id. Exit: father approval, or return to SAMPLE with notes.\n5. **PROMOTE (optional, deep tier)** — If instant fidelity is insufficient\n   for daily use: longer clean session, trained clone, father's explicit\n   per-case approval. Exit: tier=trained, QC'd on a long passage before\n   activation.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Cloning someone else's voice | Consent recording IS the speaker's voice; mismatch = abort |\n| Bad sample → bad clone forever | VERIFY stage listens before any real use |\n| Voice shared publicly by default | Visibility defaults to private; public is an explicit logged opt-in |\n| Enrollment data leaves the device | Local path default; cloud fallback needs father's per-case approval |\n| Voice used beyond consent scope | Consent names the purpose; new purpose = new consent |",
+    "modules": [
+     "hands",
+     "station",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "higgsfield": {
+  "techniques": [
+   {
+    "id": "T-03",
+    "title": "Soul ID: Train-Once Identity Lock",
+    "what_it_does": "A persona is trained once from a set of reference photos (~20 consistent portraits, ideally multi-angle: front, side, 3/4 via a composite sheet) into a persistent identity profile. Every later generation references that profile by name; the same face appears across shots, models, and sessions without re-uploading references.",
+    "why_it_works": "Per-shot reference images drift over a long series (references of references). A trained profile is a stable embedding: one source of truth for identity, versioned once, consumed everywhere.",
+    "genesis_implementation": "For the station/eyes modules and the 369 content library: build an `identity_profiles/` store — a named identity = one folder with canonical reference images + a fixed descriptor block (face, build, wardrobe, palette HEXes). Any asset pipeline that reuses a persona loads the profile by ID; regenerating the identity requires a versioned change, never a silent drift. Keep a profile-change log so a face that \"changes\" is always traceable to a deliberate edit.",
+    "raw": "- **What it does:** A persona is trained once from a set of reference photos\n  (~20 consistent portraits, ideally multi-angle: front, side, 3/4 via a\n  composite sheet) into a persistent identity profile. Every later generation\n  references that profile by name; the same face appears across shots, models,\n  and sessions without re-uploading references.\n- **Why it works:** Per-shot reference images drift over a long series\n  (references of references). A trained profile is a stable embedding: one\n  source of truth for identity, versioned once, consumed everywhere.\n- **GENESIS implementation:** For the station/eyes modules and the 369 content\n  library: build an `identity_profiles/` store — a named identity = one folder\n  with canonical reference images + a fixed descriptor block (face, build,\n  wardrobe, palette HEXes). Any asset pipeline that reuses a persona loads the\n  profile by ID; regenerating the identity requires a versioned change, never\n  a silent drift. Keep a profile-change log so a face that \"changes\" is always\n  traceable to a deliberate edit.",
+    "modules": [
+     "memory",
+     "station"
+    ]
+   },
+   {
+    "id": "T-14",
+    "title": "Grid Generation + Composite Reference Sheet (pre-training consistency)",
+    "what_it_does": "Generate the character with 2x2/4x4 grid variations, capture front/side/3-4 angles (3D orbit mode), arrange the best angles into a single composite reference sheet, and upload THAT as the identity reference. Multi-angle sheets dramatically improve consistency across extreme angle changes and profile views.",
+    "why_it_works": "A single reference photo under-constrains the face in 3D; the model must invent what the profile looks like. A composite sheet gives it the profile, the three-quarter, the front — invention is replaced with reference.",
+    "genesis_implementation": "Standardize the identity-profile folder (T-03): it must contain the multi-angle composite sheet, not a single photo, before a character is \"locked\". The profile-lock gate checks for ≥3 angles + the descriptor block. This is the avatar module's onboarding ritual too. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor claim | Independent evidence | |---|---|---| | Creator scale (18M+, ~4M videos/day) | Reported on platform | Independent verification not available; treat as marketing-scale claim | | Camera preset execution (\"executes exactly as instructed\") | Official blog / help center | Reviewers confirm camera control is the platform's standout strength vs. rivals (therundown.ai, justbeingresourceful.com) | | Character consistency (Soul ID) | \"Same face across every image and video\" | Reviewers: helps significantly but NOT perfect — faces/outfits/proportions can still shift without careful reference management (justbeingresourceful.com) | | Output quality tracks the selected model | Aggregation disclosed on pricing/help | Reviewers confirm: quality follows the underlying engine, so results vary by model choice (medium.com comparison) | | Cost visibility (cost shown before generation) | Feature listed on studio UI | Reviewers confirm it genuinely helps budgeting (toolinsightpro.com) | | Single subscription, one credit balance | Pricing page | Confirmed by multiple independent reviews; BUT reviewers warn credit burn on frontier models is fast and \"unlimited\" tiers have fair-use throttling | | Genjutsu motion preservation | Official launch material | Community walkthroughs confirm simple swap workflows work; copyright caution raised by creators re: transforming others' work | | Enterprise/ARR traction | Investor-site coverage (ainvest.com) | A blog analysis explicitly warns: request primary filings before treating revenue/ARR as verified | --- ## Sources - https://higgsfield.ai/creator-hub/help-center/getting-started/what-is-higgsfield - https://higgsfield.ai/blog/turn-your-video-into-cinema-using-wan-camera-control - https://higgsfield.ai/blog/keep-characters-consistent-ai-animated-series - https://higgsfield.ai/blog/ai-video-prompt-mistakes - https://www.thehypemagazine.com/2026/10/09/what-is-higgsfield-ai-uses-features-pricing/ - https://justbeingresourceful.com/2026/09/28/higgsfield-ai-review-one-subscription-for-15-video-models-a-production-stack-and-a-valuation-that-says-its-not-messing-around/ - https://www.therundown.ai/tools/higgsfield - https://www.toolinsightpro.com/higgsfield-ai-review/ - https://www.vo3ai.com/higgsfield-ai-pricing - https://www.imagine.art/blogs/higgsfield-ai-pricing - https://www.toolbit.ai/blog/higgsfield-ai-full-tutorial - https://github.com/w0ver/higgsfield-api-comfyui-nodes/blob/HEAD/README.md - https://github.com/halilogia/blender-copilot/blob/HEAD/docs/HIGGSFIELD.md - https://github.com/OSideMedia/higgsfield-ai-prompt-skill/raw/e68a2f7f93a42452b1834c94b1009fff258cc779/USER-GUIDE.pdf (community prompt skill v3.7.6; identity/motion separation rule summarized in own words above) - https://github.com/promptwhat/promptwhat-soul2-skill/blob/main/README.en.md - https://github.com/postbasehq/postbase/commit/cc8c1cbfb29ff8aacf17004145d37088df2e4866 - http://dev.to/aeoninc/higgsfield-on-aeon-three-modes-100-models-two-outputs-hba - http://hottrendingtrendz.blogspot.com/2026/09/higgsfield-what-ai-video-startup-is-and.html - http://aitechguide123.blogspot.com/2026/04/higgsfield-ai-kya-hai-future-ai.html - http://vuela.ai/alternative/higgsfield/pricing - https://medium.com/@aroojishtiyaq/imagineart-vs-higgsfield-stop-comparing-them-wrong-ad101e9aa00b - https://www.selecthub.com/ai-video-generator-software/higgsfield-ai-vs-revid-ai All facts above are summaries in our own words of publicly reported information. Pricing figures are third-party-reported (Sept–Oct 2026) and may change; the official pricing page is the authority. No copyrighted text reproduced beyond brief attributed phrases. ## Pricing reference (third-party-reported, ~Sept–Oct 2026; verify on higgsfield.ai/pricing) | Plan | Monthly | Annual/mo | Credits/mo | |---|---|---|---| | Free | $0 | $0 | ~10/day, watermarked, limited models | | Starter | ~$15–19 | ~$15–19 | 200–270, selected models (no Veo 3 family) | | Plus | ~$49–59 | ~$39–47 | 1,000–1,200, all models | | Ultra (popular) | ~$129 | ~$99 | 3,000 (scalable to 9,000) | | Business/Team | ~$62–89/seat | ~$62–65/seat | 1,500/seat pooled | Notes: credits do not roll over; top-ups (~$5/100) expire ~90 days; reported per-generation costs: ~1 credit/image (Seedream), ~2 (Nano Banana Pro), ~14 (Kling 3.0 8s), up to ~9 credits/sec (premium 1080p video), 40–70 per frontier-model clip. \"Unlimited\" offers cover a narrow image-model list with fair-use throttling. Commercial rights from Starter up.",
+    "raw": "- **What it does:** Generate the character with 2x2/4x4 grid variations,\n  capture front/side/3-4 angles (3D orbit mode), arrange the best angles into\n  a single composite reference sheet, and upload THAT as the identity\n  reference. Multi-angle sheets dramatically improve consistency across\n  extreme angle changes and profile views.\n- **Why it works:** A single reference photo under-constrains the face in 3D;\n  the model must invent what the profile looks like. A composite sheet gives\n  it the profile, the three-quarter, the front — invention is replaced with\n  reference.\n- **GENESIS implementation:** Standardize the identity-profile folder (T-03):\n  it must contain the multi-angle composite sheet, not a single photo,\n  before a character is \"locked\". The profile-lock gate checks for ≥3 angles\n  + the descriptor block. This is the avatar module's onboarding ritual too.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor claim | Independent evidence |\n|---|---|---|\n| Creator scale (18M+, ~4M videos/day) | Reported on platform | Independent verification not available; treat as marketing-scale claim |\n| Camera preset execution (\"executes exactly as instructed\") | Official blog / help center | Reviewers confirm camera control is the platform's standout strength vs. rivals (therundown.ai, justbeingresourceful.com) |\n| Character consistency (Soul ID) | \"Same face across every image and video\" | Reviewers: helps significantly but NOT perfect — faces/outfits/proportions can still shift without careful reference management (justbeingresourceful.com) |\n| Output quality tracks the selected model | Aggregation disclosed on pricing/help | Reviewers confirm: quality follows the underlying engine, so results vary by model choice (medium.com comparison) |\n| Cost visibility (cost shown before generation) | Feature listed on studio UI | Reviewers confirm it genuinely helps budgeting (toolinsightpro.com) |\n| Single subscription, one credit balance | Pricing page | Confirmed by multiple independent reviews; BUT reviewers warn credit burn on frontier models is fast and \"unlimited\" tiers have fair-use throttling |\n| Genjutsu motion preservation | Official launch material | Community walkthroughs confirm simple swap workflows work; copyright caution raised by creators re: transforming others' work |\n| Enterprise/ARR traction | Investor-site coverage (ainvest.com) | A blog analysis explicitly warns: request primary filings before treating revenue/ARR as verified |\n\n---\n\n## Sources\n\n- https://higgsfield.ai/creator-hub/help-center/getting-started/what-is-higgsfield\n- https://higgsfield.ai/blog/turn-your-video-into-cinema-using-wan-camera-control\n- https://higgsfield.ai/blog/keep-characters-consistent-ai-animated-series\n- https://higgsfield.ai/blog/ai-video-prompt-mistakes\n- https://www.thehypemagazine.com/2026/10/09/what-is-higgsfield-ai-uses-features-pricing/\n- https://justbeingresourceful.com/2026/09/28/higgsfield-ai-review-one-subscription-for-15-video-models-a-production-stack-and-a-valuation-that-says-its-not-messing-around/\n- https://www.therundown.ai/tools/higgsfield\n- https://www.toolinsightpro.com/higgsfield-ai-review/\n- https://www.vo3ai.com/higgsfield-ai-pricing\n- https://www.imagine.art/blogs/higgsfield-ai-pricing\n- https://www.toolbit.ai/blog/higgsfield-ai-full-tutorial\n- https://github.com/w0ver/higgsfield-api-comfyui-nodes/blob/HEAD/README.md\n- https://github.com/halilogia/blender-copilot/blob/HEAD/docs/HIGGSFIELD.md\n- https://github.com/OSideMedia/higgsfield-ai-prompt-skill/raw/e68a2f7f93a42452b1834c94b1009fff258cc779/USER-GUIDE.pdf (community prompt skill v3.7.6; identity/motion separation rule summarized in own words above)\n- https://github.com/promptwhat/promptwhat-soul2-skill/blob/main/README.en.md\n- https://github.com/postbasehq/postbase/commit/cc8c1cbfb29ff8aacf17004145d37088df2e4866\n- http://dev.to/aeoninc/higgsfield-on-aeon-three-modes-100-models-two-outputs-hba\n- http://hottrendingtrendz.blogspot.com/2026/09/higgsfield-what-ai-video-startup-is-and.html\n- http://aitechguide123.blogspot.com/2026/04/higgsfield-ai-kya-hai-future-ai.html\n- http://vuela.ai/alternative/higgsfield/pricing\n- https://medium.com/@aroojishtiyaq/imagineart-vs-higgsfield-stop-comparing-them-wrong-ad101e9aa00b\n- https://www.selecthub.com/ai-video-generator-software/higgsfield-ai-vs-revid-ai\n\nAll facts above are summaries in our own words of publicly reported\ninformation. Pricing figures are third-party-reported (Sept–Oct 2026) and may\nchange; the official pricing page is the authority. No copyrighted text\nreproduced beyond brief attributed phrases.\n\n## Pricing reference (third-party-reported, ~Sept–Oct 2026; verify on higgsfield.ai/pricing)\n\n| Plan | Monthly | Annual/mo | Credits/mo |\n|---|---|---|---|\n| Free | $0 | $0 | ~10/day, watermarked, limited models |\n| Starter | ~$15–19 | ~$15–19 | 200–270, selected models (no Veo 3 family) |\n| Plus | ~$49–59 | ~$39–47 | 1,000–1,200, all models |\n| Ultra (popular) | ~$129 | ~$99 | 3,000 (scalable to 9,000) |\n| Business/Team | ~$62–89/seat | ~$62–65/seat | 1,500/seat pooled |\n\nNotes: credits do not roll over; top-ups (~$5/100) expire ~90 days; reported\nper-generation costs: ~1 credit/image (Seedream), ~2 (Nano Banana Pro),\n~14 (Kling 3.0 8s), up to ~9 credits/sec (premium 1080p video), 40–70 per\nfrontier-model clip. \"Unlimited\" offers cover a narrow image-model list with\nfair-use throttling. Commercial rights from Starter up.",
+    "modules": [
+     "eyes",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-06",
+    "title": "Deterministic Hooks: Steer vs. Enforce Split",
+    "what_it_does": "Lifecycle hooks (shell commands triggered on events like before-tool-use, after-tool-use, or agent-stop) with matchers on the tool or action. A hook's exit code can hard-block an action regardless of what the model decided; anything written to stderr becomes the model's feedback. Anthropic's own guidance draws the line: prompting is a request, a hook is a guarantee — the model choosing to run a formatter is different from the formatter running automatically.",
+    "why_it_works": "Instructions can be ignored under pressure or fade over long sessions. A deterministic check blocks regardless of the model's judgment, which is the only real enforcement layer in an agentic system.",
+    "genesis_implementation": "This is the pattern our hands permission_gate must fully adopt: advisory rules live in prompts; hard blocks live in hook-equivalent deterministic code checks (protect paths, deny secret exfiltration, refuse destructive ops). Every law we consider load-bearing gets a deterministic check, not just a sentence in the system prompt. Warn-only on stop events (blocking there risks loops); hard-block on pre-action events.",
+    "raw": "- **What it does:** Lifecycle hooks (shell commands triggered on events like\n  before-tool-use, after-tool-use, or agent-stop) with matchers on the tool or\n  action. A hook's exit code can hard-block an action regardless of what the\n  model decided; anything written to stderr becomes the model's feedback.\n  Anthropic's own guidance draws the line: prompting is a request, a hook is a\n  guarantee — the model choosing to run a formatter is different from the\n  formatter running automatically.\n- **Why it works:** Instructions can be ignored under pressure or fade over\n  long sessions. A deterministic check blocks regardless of the model's\n  judgment, which is the only real enforcement layer in an agentic system.\n- **GENESIS implementation:** This is the pattern our hands permission_gate must\n  fully adopt: advisory rules live in prompts; hard blocks live in\n  hook-equivalent deterministic code checks (protect paths, deny secret\n  exfiltration, refuse destructive ops). Every law we consider load-bearing gets\n  a deterministic check, not just a sentence in the system prompt. Warn-only on\n  stop events (blocking there risks loops); hard-block on pre-action events.",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "replit-agent": {
+  "techniques": [
+   {
+    "id": "T-04",
+    "title": "Checkpoint Snapshots with Full Rollback",
+    "what_it_does": "Every agent work unit is captured as a checkpoint that restores files, agent memory, task state, and optionally the development database. Rollback returns the whole project to any earlier checkpoint. Database recovery windows are plan-dependent (e.g., days of point-in-time restore on higher tiers).",
+    "why_it_works": "Autonomous agents make wrong turns; without cheap undo, the operator is forced to let a runaway build continue or lose everything. A checkpoint converts \"the agent ruined it\" into a two-click recovery, which is what makes long unattended runs psychologically affordable.",
+    "genesis_implementation": "In the hands + station modules, snapshot the workspace (file tree hash + job state + memory diff) before every mutation stage of an app build. Expose `rollback(checkpoint_id)` in the scheduler. Critical edge case learned from Replit postmortems: code rollback and data rollback are INDEPENDENT axes — restoring files does not restore data and vice versa, so GENESIS snapshots must cover both and the rollback UI must say which axes it restores.",
+    "raw": "- **What it does:** Every agent work unit is captured as a checkpoint that\n  restores files, agent memory, task state, and optionally the development\n  database. Rollback returns the whole project to any earlier checkpoint.\n  Database recovery windows are plan-dependent (e.g., days of point-in-time\n  restore on higher tiers).\n- **Why it works:** Autonomous agents make wrong turns; without cheap undo, the\n  operator is forced to let a runaway build continue or lose everything. A\n  checkpoint converts \"the agent ruined it\" into a two-click recovery, which is\n  what makes long unattended runs psychologically affordable.\n- **GENESIS implementation:** In the hands + station modules, snapshot the\n  workspace (file tree hash + job state + memory diff) before every mutation\n  stage of an app build. Expose `rollback(checkpoint_id)` in the scheduler.\n  Critical edge case learned from Replit postmortems: code rollback and data\n  rollback are INDEPENDENT axes — restoring files does not restore data and\n  vice versa, so GENESIS snapshots must cover both and the rollback UI must\n  say which axes it restores.",
+    "modules": [
+     "hands",
+     "scheduler",
+     "station"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Unified Infrastructure Provisioning (one agent, whole stack)",
+    "what_it_does": "The same agent that writes the code also provisions the database (dev and production separated), manages auth, stores secrets encrypted, configures object storage, and handles deployment — no separate DevOps step, no context handoff between \"the coder\" and \"the deployer.\"",
+    "why_it_works": "Every handoff is a context-loss event. One agent holding the full stack means the deploy configuration is derived from the same understanding as the code, which is why one-click deploy actually works for standard stacks.",
+    "genesis_implementation": "When GENESIS builds for the father (landing pages, tools), the build job must include infrastructure artifacts from the same run: deploy config, secrets handling, and environment separation (dev vs prod). A build deliverable is not \"complete\" until it ships with its deployment recipe. Relevant to the GENESIS package sales track.",
+    "raw": "- **What it does:** The same agent that writes the code also provisions the\n  database (dev and production separated), manages auth, stores secrets\n  encrypted, configures object storage, and handles deployment — no separate\n  DevOps step, no context handoff between \"the coder\" and \"the deployer.\"\n- **Why it works:** Every handoff is a context-loss event. One agent holding\n  the full stack means the deploy configuration is derived from the same\n  understanding as the code, which is why one-click deploy actually works\n  for standard stacks.\n- **GENESIS implementation:** When GENESIS builds for the father (landing\n  pages, tools), the build job must include infrastructure artifacts from the\n  same run: deploy config, secrets handling, and environment separation\n  (dev vs prod). A build deliverable is not \"complete\" until it ships with\n  its deployment recipe. Relevant to the GENESIS package sales track.",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Publish Pipeline (preview → live with safeguards)",
+    "body": "For: shipping a finished build to a live URL.\n\n1. **PRE-FLIGHT** — Run the full self-test on the preview (W-01 step 4)\n   plus security basics: no secrets in code, auth enforced where required,\n   error handling present on key paths.\n   Exit: all green; secrets audit clean.\n   Failure guard: any secret found in code blocks publish — the key must be\n   moved to the secrets manager first.\n2. **DEPLOY-TYPE SELECTION** — Declare the deployment type against the\n   workload (T-13): static / autoscale / always-on / scheduled.\n   Exit: type chosen with its cost implication stated.\n   Failure guard: \"just publish it\" without a declared type is rejected.\n3. **PUBLISH** — Deploy; separate production data from development data.\n   Exit: live URL issued.\n4. **LIVE VERIFY** — Run the key user flow against the LIVE URL, not the\n   preview (P-10).\n   Exit: live flow works, monitoring/logs reachable.\n   Failure guard: live-broken-but-preview-fine routes to W-02 with the\n   deployment logs, and the known rollback axis gap is respected: code\n   rollback and data rollback are handled as independent operations (T-04).\n5. **WATCH** — Usage dashboard, spend, and error logs checked at +1h and\n   +24h after publish.\n   Exit: no anomalies, spend within budget.\n   Failure guard: spend spike or error storm triggers an immediate pause of\n   the deployment and a human alert (T-14).",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "chatgpt": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Declarative Assistant Packaging (Custom GPTs)",
+    "what_it_does": "A complete assistant is declared as a data record: identity (name, description, avatar), system instructions, knowledge files, capability toggles, external actions, conversation starters, and visibility. The builder guides creation conversationally, then exposes a Configure tab for direct control, a live Preview panel for testing, and a save/share step.",
+    "why_it_works": "It turns \"prompt\" into \"product\": one reusable, testable, shareable unit instead of re-typed context per session. The conversational builder lowers the floor; the Configure tab raises the ceiling; Preview shortens the feedback loop.",
+    "genesis_implementation": "Define a GENESIS \"assistant pack\" schema in code (station + memory): name, charter, instruction file, knowledge bundle, tool allowlist, tool contracts, starter prompts, test script, version. Ship a pack-builder flow mirroring Create → Configure → Preview → Save: generate from a natural-language description, refine the config directly, run the test script in a sandbox, then publish to the internal pack registry.",
+    "raw": "- **What it does:** A complete assistant is declared as a data record: identity\n  (name, description, avatar), system instructions, knowledge files, capability\n  toggles, external actions, conversation starters, and visibility. The builder\n  guides creation conversationally, then exposes a Configure tab for direct\n  control, a live Preview panel for testing, and a save/share step.\n- **Why it works:** It turns \"prompt\" into \"product\": one reusable, testable,\n  shareable unit instead of re-typed context per session. The conversational\n  builder lowers the floor; the Configure tab raises the ceiling; Preview\n  shortens the feedback loop.\n- **GENESIS implementation:** Define a GENESIS \"assistant pack\" schema in code\n  (station + memory): name, charter, instruction file, knowledge bundle, tool\n  allowlist, tool contracts, starter prompts, test script, version. Ship a\n  pack-builder flow mirroring Create → Configure → Preview → Save: generate\n  from a natural-language description, refine the config directly, run the\n  test script in a sandbox, then publish to the internal pack registry.",
+    "modules": [
+     "station"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Two-Field Custom Instructions",
+    "what_it_does": "Personalization is split into exactly two fields: \"what to know about you\" (facts: role, domain, tools, constraints) and \"how to respond\" (format, tone, anti-patterns). Each is length-capped; the two are injected as system-role context on every message.",
+    "why_it_works": "The split prevents the two classic failures: identity soup (facts mixed with style rules, both weakened) and prompt bloat (templates warn: treat the limit as a constraint, don't fill it). System-role weight makes them durable rules rather than requests.",
+    "genesis_implementation": "The station module's father-profile should carry exactly two fields — `context` (facts: identity, projects, tools, standing laws) and `behavior` (format/tone rules, forbidden patterns) — with per-field char budgets. Inject as system context on every agent job. Add a trim-and- retest loop: when outputs drift, shrink instructions rather than grow them.",
+    "raw": "- **What it does:** Personalization is split into exactly two fields: \"what to\n  know about you\" (facts: role, domain, tools, constraints) and \"how to\n  respond\" (format, tone, anti-patterns). Each is length-capped; the two are\n  injected as system-role context on every message.\n- **Why it works:** The split prevents the two classic failures: identity soup\n  (facts mixed with style rules, both weakened) and prompt bloat (templates\n  warn: treat the limit as a constraint, don't fill it). System-role weight\n  makes them durable rules rather than requests.\n- **GENESIS implementation:** The station module's father-profile should carry\n  exactly two fields — `context` (facts: identity, projects, tools, standing\n  laws) and `behavior` (format/tone rules, forbidden patterns) — with per-field\n  char budgets. Inject as system context on every agent job. Add a trim-and-\n  retest loop: when outputs drift, shrink instructions rather than grow them.",
+    "modules": [
+     "station"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Conversation Starters (assistant onboarding)",
+    "what_it_does": "Each custom assistant shows 2–4 suggested opening prompts that demonstrate its intended use cases. They are written by the builder, not generated.",
+    "why_it_works": "A blank chat box is a blank page — most users underuse assistants because they don't know what to ask first. Starters are the builder's way of teaching the interface.",
+    "genesis_implementation": "Every assistant pack (T-01) and every Project (T-03) carries starter prompts in the father's language. They must reflect the assistant's real configured abilities (no aspirational starters — that's a fabrication vector).",
+    "raw": "- **What it does:** Each custom assistant shows 2–4 suggested opening prompts\n  that demonstrate its intended use cases. They are written by the builder,\n  not generated.\n- **Why it works:** A blank chat box is a blank page — most users underuse\n  assistants because they don't know what to ask first. Starters are the\n  builder's way of teaching the interface.\n- **GENESIS implementation:** Every assistant pack (T-01) and every Project\n  (T-03) carries starter prompts in the father's language. They must reflect\n  the assistant's real configured abilities (no aspirational starters —\n  that's a fabrication vector).",
+    "modules": [
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Two-Field Identity Brief",
+    "use_when": "setting up any long-lived GENESIS assistant for the father.",
+    "pattern": "Separate who-he-is from how-to-answer. Two capped fields, facts first, behavior second.",
+    "template": " > Field 1 — About the owner: <role, domain, tools, standing constraints, > current projects>. Facts only, no style rules. > Field 2 — How to respond: <format rules first, then tone, then explicit > anti-patterns (\"never do X\")>. Under <N> chars per field. > Re-test after any change: if outputs drift, shorten the fields.",
+    "raw": "- **Use when:** setting up any long-lived GENESIS assistant for the father.\n- **Pattern:** Separate who-he-is from how-to-answer. Two capped fields,\n  facts first, behavior second.\n- **Template:**\n  > Field 1 — About the owner: <role, domain, tools, standing constraints,\n  > current projects>. Facts only, no style rules.\n  > Field 2 — How to respond: <format rules first, then tone, then explicit\n  > anti-patterns (\"never do X\")>. Under <N> chars per field.\n  > Re-test after any change: if outputs drift, shorten the fields.",
+    "modules": [
+     "station"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Ordered Context: role → domain → tools → constraints",
+    "use_when": "writing the facts field of P-01 or a project brief.",
+    "pattern": "Fixed order prevents the assistant from overweighting the wrong detail. Role sets authority, domain sets vocabulary, tools set capability bounds, constraints set hard walls.",
+    "template": " > You serve: <role, e.g. owner-operator of the 369 network>. > Domain: <gaming media, YouTube monetization, Windows PC automation>. > Tools available: <list; everything else is unavailable>. > Hard constraints: <zero spend; never fabricate; approval gates for X>.",
+    "raw": "- **Use when:** writing the facts field of P-01 or a project brief.\n- **Pattern:** Fixed order prevents the assistant from overweighting the\n  wrong detail. Role sets authority, domain sets vocabulary, tools set\n  capability bounds, constraints set hard walls.\n- **Template:**\n  > You serve: <role, e.g. owner-operator of the 369 network>.\n  > Domain: <gaming media, YouTube monetization, Windows PC automation>.\n  > Tools available: <list; everything else is unavailable>.\n  > Hard constraints: <zero spend; never fabricate; approval gates for X>.",
+    "modules": [
+     "station"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Starter-Prompt Seeding",
+    "use_when": "activating an assistant pack or project (T-01/T-03, T-13).",
+    "pattern": "The builder — not the model — writes 2–4 opening prompts that demonstrate the assistant's real configured abilities. They are documentation and onboarding in one.",
+    "template": " > Starter prompts for this assistant (each must be answerable with its > configured tools, nothing aspirational): > 1. <canonical job 1, e.g. \"Review this reel frame-by-frame\"> > 2. <canonical job 2> > 3. <canonical job 3>",
+    "raw": "- **Use when:** activating an assistant pack or project (T-01/T-03, T-13).\n- **Pattern:** The builder — not the model — writes 2–4 opening prompts that\n  demonstrate the assistant's real configured abilities. They are\n  documentation and onboarding in one.\n- **Template:**\n  > Starter prompts for this assistant (each must be answerable with its\n  > configured tools, nothing aspirational):\n  > 1. <canonical job 1, e.g. \"Review this reel frame-by-frame\">\n  > 2. <canonical job 2>\n  > 3. <canonical job 3>",
+    "modules": [
+     "station"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Custom Assistant Setup (Create → Configure → Preview → Save)",
+    "body": "Modeled on the public GPT Builder workflow. Builds a reusable assistant pack\n(T-01).\n\n1. **DESCRIBE** — Father states the job in plain words. The system drafts a\n   pack: name, charter, instructions, capability needs. (P-01, P-02)\n   Exit: a draft pack record exists with all fields filled.\n2. **CONFIGURE** — Father (or an agent) edits the configuration directly:\n   identity, instructions, knowledge bundle, tool allowlist + contracts,\n   starters. (T-04, P-04)\n   Exit: config is complete; every tool has a validated contract + behavior\n   note; starters are all answerable.\n3. **PREVIEW** — Run the pack's test script against realistic prompts,\n   including edge cases and instruction conflicts, in a sandbox.\n   Exit: all test prompts pass; no tool called outside its contract.\n4. **SAVE** — Version, publish to the pack registry with visibility\n   (private by default). Record charter version.\n   Exit: versioned pack retrievable by name; audit entry written.\n5. **REVIEW LOOP** — Corrections update the pack config (P-09-style\n   preference learning), re-running PREVIEW before re-save.\n   Exit: config and tests green again.\n\nGuarded failure modes: aspirational starters (rejected at PREVIEW), unvalidated\ntool contracts (blocked at CONFIGURE), silent visibility changes (all shares\nlogged).",
+    "modules": [
+     "scheduler",
+     "station"
+    ]
+   }
+  ],
+  "guardrails": []
+ }
+}

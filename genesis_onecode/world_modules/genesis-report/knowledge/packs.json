@@ -1,0 +1,606 @@
+{
+ "astra": {
+  "techniques": [],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Document Production (report module pattern)",
+    "body": "1. **OUTLINE** — Structure from the brief; confirm sections before writing.\n2. **DRAFT** — Write section by section; each section cites its sources.\n3. **SELF-QA** — Read the draft as a hostile reviewer: check every number,\n   every claim, every formatting rule. Fix-list, not praise.\n4. **FORMAT** — Apply the house style (fonts, layout, language rules).\n5. **DELIVER** — Final file + a one-paragraph summary of what changed vs.\n   the brief.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "heygen": {
+  "techniques": [
+   {
+    "id": "T-06",
+    "title": "Translate-and-Re-Lip-Sync (localization as re-render)",
+    "what_it_does": "The translation pipeline transcribes the source video, translates the script, synthesizes the speaker's cloned voice in the target language, and then re-renders the avatar's mouth movements to match the new language's phonemes — frame by frame. It is not dubbing; it is a new render.",
+    "why_it_works": "Different languages have different phoneme inventories. Only re-rendering against the target audio produces believable sync; testers describe this as the platform's most striking capability.",
+    "genesis_implementation": "Treat every localization as a fresh render through T-02's pipeline with translated text as input. Store the source script + language map so a change to the source can re-trigger all localized renders automatically.",
+    "raw": "- **What it does:** The translation pipeline transcribes the source video,\n  translates the script, synthesizes the speaker's cloned voice in the target\n  language, and then re-renders the avatar's mouth movements to match the\n  new language's phonemes — frame by frame. It is not dubbing; it is a new\n  render.\n- **Why it works:** Different languages have different phoneme inventories.\n  Only re-rendering against the target audio produces believable sync;\n  testers describe this as the platform's most striking capability.\n- **GENESIS implementation:** Treat every localization as a fresh render\n  through T-02's pipeline with translated text as input. Store the source\n  script + language map so a change to the source can re-trigger all\n  localized renders automatically.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Declarative Scene API (video_inputs manifest)",
+    "what_it_does": "Videos are created through a declarative JSON manifest: an array of scenes, each specifying character (avatar id + style), voice (text + voice id, or audio asset), background (color, image, or video with playback style), and output dimensions. Generation is asynchronous: submit → poll status → retrieve finished file.",
+    "why_it_works": "A video becomes data. Scenes are composable, version-controlled, and machine-generatable; multi-scene videos (1–50 scenes) assemble from the same schema as single scenes.",
+    "genesis_implementation": "Adopt a declarative scene manifest as the contract between the report module (which authors scripts) and the avatar host (which renders). Keep generation async with a status poller so long renders never block the scheduler.",
+    "raw": "- **What it does:** Videos are created through a declarative JSON manifest:\n  an array of scenes, each specifying character (avatar id + style), voice\n  (text + voice id, or audio asset), background (color, image, or video with\n  playback style), and output dimensions. Generation is asynchronous:\n  submit → poll status → retrieve finished file.\n- **Why it works:** A video becomes data. Scenes are composable,\n  version-controlled, and machine-generatable; multi-scene videos (1–50\n  scenes) assemble from the same schema as single scenes.\n- **GENESIS implementation:** Adopt a declarative scene manifest as the\n  contract between the report module (which authors scripts) and the avatar\n  host (which renders). Keep generation async with a status poller so long\n  renders never block the scheduler.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-02",
+    "title": "One Concept Per Scene",
+    "use_when": "scripting any video longer than ~30 seconds.",
+    "pattern": "Split the script into scenes; each scene carries exactly one concept, one avatar framing, one background. The scene manifest lists them in order (video_inputs[0..n]).",
+    "template": " > Scene <n>: <one concept> | framing=<head/torso/full> | > background=<ref> | script=<the lines for this scene only>. > If a scene carries two ideas, split it.",
+    "raw": "- **Use when:** scripting any video longer than ~30 seconds.\n- **Pattern:** Split the script into scenes; each scene carries exactly one\n  concept, one avatar framing, one background. The scene manifest lists them\n  in order (video_inputs[0..n]).\n- **Template:**\n  > Scene <n>: <one concept> | framing=<head/torso/full> |\n  > background=<ref> | script=<the lines for this scene only>.\n  > If a scene carries two ideas, split it.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Plain-Language Script Rule",
+    "use_when": "writing the spoken lines.",
+    "pattern": "Short, simple sentences. Spell out acronyms and abbreviations phonetically. Avoid jargon the voice may mispronounce. One breath per sentence.",
+    "template": " > Rewrite each line so a non-expert can read it aloud cold. > Acronyms: write them as they sound (<e.g.> \"A-P-I\" → \"ay pee eye\"). > No sentence longer than one spoken breath.",
+    "raw": "- **Use when:** writing the spoken lines.\n- **Pattern:** Short, simple sentences. Spell out acronyms and abbreviations\n  phonetically. Avoid jargon the voice may mispronounce. One breath per\n  sentence.\n- **Template:**\n  > Rewrite each line so a non-expert can read it aloud cold.\n  > Acronyms: write them as they sound (<e.g.> \"A-P-I\" → \"ay pee eye\").\n  > No sentence longer than one spoken breath.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Pronunciation Lexicon Pre-Flight",
+    "use_when": "the script contains brand names, product names, or technical terms.",
+    "pattern": "Before rendering, extract every risky term, write its phonetic spelling, and test it in a draft render. Fix the lexicon, not the take.",
+    "template": " > Terms to verify: <term> → <phonetic spelling>. > Render a 10-second draft with all terms. Listen once; correct the > spelling, not the avatar. Lock the lexicon before the final render.",
+    "raw": "- **Use when:** the script contains brand names, product names, or technical\n  terms.\n- **Pattern:** Before rendering, extract every risky term, write its\n  phonetic spelling, and test it in a draft render. Fix the lexicon, not the\n  take.\n- **Template:**\n  > Terms to verify: <term> → <phonetic spelling>.\n  > Render a 10-second draft with all terms. Listen once; correct the\n  > spelling, not the avatar. Lock the lexicon before the final render.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Beat Timing (hook, pace, CTA)",
+    "use_when": "structuring any script.",
+    "pattern": "Hook in the first 3 seconds. Pause between sentences so the delivery breathes. Aim 60–90 seconds for explainers. End with one clear call to action — the last scene exists only for the CTA.",
+    "template": " > Scene 1 (0–3s): the hook — one sentence, the payoff stated up front. > Middle scenes: one concept each, pause <0.5s> between sentences. > Final scene: one clear action for the viewer. Nothing after it.",
+    "raw": "- **Use when:** structuring any script.\n- **Pattern:** Hook in the first 3 seconds. Pause between sentences so the\n  delivery breathes. Aim 60–90 seconds for explainers. End with one clear\n  call to action — the last scene exists only for the CTA.\n- **Template:**\n  > Scene 1 (0–3s): the hook — one sentence, the payoff stated up front.\n  > Middle scenes: one concept each, pause <0.5s> between sentences.\n  > Final scene: one clear action for the viewer. Nothing after it.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Two-Tier Render (draft vs final)",
+    "use_when": "any multi-round production.",
+    "pattern": "Run every video first at draft quality for internal review; reserve the highest-quality render for the client-facing or published version. Never burn premium render budget on a draft.",
+    "template": " > Round 1: draft tier — check script, sync, framing. > Round 2 (only after Round 1 passes QC): final tier — the version that > ships. Draft failures never reach the final tier.",
+    "raw": "- **Use when:** any multi-round production.\n- **Pattern:** Run every video first at draft quality for internal review;\n  reserve the highest-quality render for the client-facing or published\n  version. Never burn premium render budget on a draft.\n- **Template:**\n  > Round 1: draft tier — check script, sync, framing.\n  > Round 2 (only after Round 1 passes QC): final tier — the version that\n  > ships. Draft failures never reach the final tier.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Localization Pipeline (one video → many languages)",
+    "body": "Owner: avatar host (+ report for translation).\n\n1. **TRANSCRIBE & LOCK** — Transcribe the source video; lock the source\n   script. Exit: source script + language map. *Guard:* multi-speaker or\n   occluded footage is rejected here (P-07 anti-pattern).\n2. **TRANSLATE** — Translate per target language; a human or reviewer pass\n   on the transcript before translation for high-stakes content. Exit:\n   script_L for each language. *Guard:* unreviewed machine translation is\n   flagged draft-only.\n3. **VOICE** — Synthesize script_L with the same speaker identity (T-05/\n   T-06). Exit: audio_L per language. *Guard:* product-capability only —\n   the 369 publish path refuses AI voice at this step.\n4. **RE-RENDER SYNC** — Fresh render per language with lip-sync regenerated\n   against the new phonemes (T-02, T-06). Exit: video_L per language.\n   *Guard:* overlaying audio_L on the source face is rejected by the gate.\n5. **QC PER LANGUAGE** — P-09 per language, plus a native-speaker spot check\n   on pacing for flagship languages. Exit: per-language PASS/FAIL.\n6. **BUNDLE** — Publish the language set with shared manifest. Exit: all\n   languages registered; a source-script change re-triggers the pipeline.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "synthesia": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Slide-Scene Video Composition (the slide is the atomic unit)",
+    "what_it_does": "The editor is built on slides, not timelines. Each slide carries one script segment, one layout, and one set of timing rules; the video is the ordered composition of its slides. PowerPoint decks import directly into this structure.",
+    "why_it_works": "Business content already lives in slides. Making the slide the atomic unit removes a translation step — the source document IS the video blueprint. Independent reviewers consistently cite the slide-first editor as Synthesia's core strength for training content.",
+    "genesis_implementation": "The report module's video authoring path should treat slides as first-class objects: each slide = {script, layout, assets, duration}. Any external document (PDF, PPTX, doc) imports into a slide manifest first, and generation always runs from the manifest — never from raw free text.",
+    "raw": "- **What it does:** The editor is built on slides, not timelines. Each slide\n  carries one script segment, one layout, and one set of timing rules; the\n  video is the ordered composition of its slides. PowerPoint decks import\n  directly into this structure.\n- **Why it works:** Business content already lives in slides. Making the slide\n  the atomic unit removes a translation step — the source document IS the\n  video blueprint. Independent reviewers consistently cite the slide-first\n  editor as Synthesia's core strength for training content.\n- **GENESIS implementation:** The report module's video authoring path should\n  treat slides as first-class objects: each slide = {script, layout, assets,\n  duration}. Any external document (PDF, PPTX, doc) imports into a slide\n  manifest first, and generation always runs from the manifest — never from\n  raw free text.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "1-Click Translation as Re-render (localization, not dubbing)",
+    "what_it_does": "The translation workflow takes the master script, translates it (dozens of languages), and generates a new video in the target language. Glossary controls keep names, terms and pronunciation consistent across every language. It is a re-render, not an audio overlay — the avatar's mouth is produced against the new language's audio.",
+    "why_it_works": "Different languages have different phoneme inventories; only a fresh render against the target audio produces believable sync. Glossary controls solve the enterprise pain of inconsistent terminology across 40 language versions. - **GENESIS implementation (product capability only; voice synthesis included):** Treat every localization as a fresh render through the phoneme-to-face pipeline with translated text as input. Store the master script + glossary + language map so a change to the master can re-trigger all localized renders automatically. Never let the glossary live in someone's head — it is a versioned data artifact.",
+    "genesis_implementation": "",
+    "raw": "- **What it does:** The translation workflow takes the master script,\n  translates it (dozens of languages), and generates a new video in the\n  target language. Glossary controls keep names, terms and pronunciation\n  consistent across every language. It is a re-render, not an audio overlay —\n  the avatar's mouth is produced against the new language's audio.\n- **Why it works:** Different languages have different phoneme inventories;\n  only a fresh render against the target audio produces believable sync.\n  Glossary controls solve the enterprise pain of inconsistent terminology\n  across 40 language versions.\n- **GENESIS implementation (product capability only; voice synthesis\n  included):** Treat every localization as a fresh render through the\n  phoneme-to-face pipeline with translated text as input. Store the master\n  script + glossary + language map so a change to the master can re-trigger\n  all localized renders automatically. Never let the glossary live in\n  someone's head — it is a versioned data artifact.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "AI Dubbing Pipeline (finished video in, localized video out)",
+    "what_it_does": "Unlike the script path, dubbing accepts a *finished* video: upload an MP4/MOV/WebM file (up to 4K) or paste a video link. The pipeline transcribes it, translates it, synthesizes the speaker's voice in the target language, and re-syncs the lips — with a line-by-line editor for correcting translated lines before final delivery.",
+    "why_it_works": "It decouples input from format. Any existing asset — not just script-authored ones — becomes localizable. The correction editor is the key trust point: machine translation is draft-quality, human review is the gate. - **GENESIS implementation (product capability only; voice synthesis included):** Build a re-lip-sync path that accepts rendered video as input: transcribe → translate (glossary-applied) → voice render → lip re-sync → human correction queue → final. The correction queue is mandatory, not optional: no dubbed video exits without a native-speaker or glossary-verified sign-off on hooks and terminology.",
+    "genesis_implementation": "",
+    "raw": "- **What it does:** Unlike the script path, dubbing accepts a *finished*\n  video: upload an MP4/MOV/WebM file (up to 4K) or paste a video link. The\n  pipeline transcribes it, translates it, synthesizes the speaker's voice in\n  the target language, and re-syncs the lips — with a line-by-line editor\n  for correcting translated lines before final delivery.\n- **Why it works:** It decouples input from format. Any existing asset — not\n  just script-authored ones — becomes localizable. The correction editor is\n  the key trust point: machine translation is draft-quality, human review is\n  the gate.\n- **GENESIS implementation (product capability only; voice synthesis\n  included):** Build a re-lip-sync path that accepts rendered video as input:\n  transcribe → translate (glossary-applied) → voice render → lip re-sync →\n  human correction queue → final. The correction queue is mandatory, not\n  optional: no dubbed video exits without a native-speaker or glossary-verified\n  sign-off on hooks and terminology.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "AI Video Assistant (document → structured draft)",
+    "what_it_does": "An assistant layer turns raw input — a document, a URL, a slide deck, or a plain-text description — into a structured first draft: outline, scenes, and suggested visuals, with brand styling pre-applied. The user then refines through chat (tone, messaging, structure) without starting over. It ships as an always-available drafting mode, not a separate product.",
+    "why_it_works": "The hardest part of video production is the blank page. The assistant collapses \"idea → structured manifest\" into minutes, and chat refinement preserves continuity instead of regenerating from scratch. Independent reviewers note the caveat honestly: the assistant improves *delivery*, not content strategy — a weak source deck stays weak.",
+    "genesis_implementation": "The report module should expose a draft mode: source document in → outline + scene manifest + visual suggestions out, all in the same declarative schema as T-08. Refinement happens as amendments to the manifest (same amend() mechanics as our scheduler), never as a blind regenerate.",
+    "raw": "- **What it does:** An assistant layer turns raw input — a document, a URL,\n  a slide deck, or a plain-text description — into a structured first draft:\n  outline, scenes, and suggested visuals, with brand styling pre-applied.\n  The user then refines through chat (tone, messaging, structure) without\n  starting over. It ships as an always-available drafting mode, not a\n  separate product.\n- **Why it works:** The hardest part of video production is the blank page.\n  The assistant collapses \"idea → structured manifest\" into minutes, and\n  chat refinement preserves continuity instead of regenerating from scratch.\n  Independent reviewers note the caveat honestly: the assistant improves\n  *delivery*, not content strategy — a weak source deck stays weak.\n- **GENESIS implementation:** The report module should expose a draft mode:\n  source document in → outline + scene manifest + visual suggestions out,\n  all in the same declarative schema as T-08. Refinement happens as\n  amendments to the manifest (same amend() mechanics as our scheduler), never\n  as a blind regenerate.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Declarative Studio API (video as data)",
+    "what_it_does": "Videos are created through a declarative JSON manifest: an array of scenes, each specifying script text, avatar (id + style: rectangular / circular / voice-only), avatar settings (alignment, scale), and background (solid color, image, or green-screen for downstream replacement). A template endpoint accepts a template id plus template data and an optional brand-kit id. Script variables enable personalization (variables may not begin with a number). Generation is asynchronous: submit → poll status → retrieve finished file. Voices support SSML for pronunciation control.",
+    "why_it_works": "A video becomes data: composable, version-controlled, machine-generatable. Templates + variables turn one master into thousands of personalized variants. Compare with HeyGen's declarative manifest — the Synthesia-specific patterns are script-variable personalization, the template+brandKitId endpoint shape, and SSML voice control.",
+    "genesis_implementation": "Adopt a declarative scene manifest as the contract between the report module (which authors scripts) and the avatar host (which renders). Keep generation async with a status poller so long renders never block the scheduler. Variable naming rules and SSML-style pronunciation tags belong in the schema spec, not in tribal knowledge.",
+    "raw": "- **What it does:** Videos are created through a declarative JSON manifest:\n  an array of scenes, each specifying script text, avatar (id + style:\n  rectangular / circular / voice-only), avatar settings (alignment, scale),\n  and background (solid color, image, or green-screen for downstream\n  replacement). A template endpoint accepts a template id plus template data\n  and an optional brand-kit id. Script variables enable personalization\n  (variables may not begin with a number). Generation is asynchronous:\n  submit → poll status → retrieve finished file. Voices support SSML for\n  pronunciation control.\n- **Why it works:** A video becomes data: composable, version-controlled,\n  machine-generatable. Templates + variables turn one master into thousands\n  of personalized variants. Compare with HeyGen's declarative manifest —\n  the Synthesia-specific patterns are script-variable personalization,\n  the template+brandKitId endpoint shape, and SSML voice control.\n- **GENESIS implementation:** Adopt a declarative scene manifest as the\n  contract between the report module (which authors scripts) and the avatar\n  host (which renders). Keep generation async with a status poller so long\n  renders never block the scheduler. Variable naming rules and SSML-style\n  pronunciation tags belong in the schema spec, not in tribal knowledge.",
+    "modules": [
+     "report",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Living-Document Version Control (edit once, propagate everywhere)",
+    "what_it_does": "Videos are not frozen files — they are living documents. Edit the master and every published copy updates automatically: shared links, website embeds, and LMS-delivered SCORM packages. Version history and analytics (views, completion, per-language comparison) attach to the document, not to a file.",
+    "why_it_works": "It eliminates the version-drift problem that makes video programs expensive: a correction no longer means tracking down and replacing every copy in circulation. This is the defining \"video *program*\" feature versus a \"make a video\" tool.",
+    "genesis_implementation": "Every GENESIS-produced video artifact should carry a master-id; derived copies (embeds, translations, LMS packages) are renders of the master, not independent files. A master edit triggers re-render of dependents with a change log. This is the single most program-grade pattern in the pack — adopt it as a platform-wide artifact convention, not just for avatar video.",
+    "raw": "- **What it does:** Videos are not frozen files — they are living documents.\n  Edit the master and every published copy updates automatically: shared\n  links, website embeds, and LMS-delivered SCORM packages. Version history\n  and analytics (views, completion, per-language comparison) attach to the\n  document, not to a file.\n- **Why it works:** It eliminates the version-drift problem that makes video\n  programs expensive: a correction no longer means tracking down and\n  replacing every copy in circulation. This is the defining \"video *program*\"\n  feature versus a \"make a video\" tool.\n- **GENESIS implementation:** Every GENESIS-produced video artifact should\n  carry a master-id; derived copies (embeds, translations, LMS packages)\n  are renders of the master, not independent files. A master edit triggers\n  re-render of dependents with a change log. This is the single most\n  program-grade pattern in the pack — adopt it as a platform-wide artifact\n  convention, not just for avatar video.",
+    "modules": [
+     "memory",
+     "report",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Interactive Video Layer (from broadcast to conversation)",
+    "what_it_does": "Videos can carry clickable CTAs, branching paths, and quizzes — the viewer chooses what happens next. A newer product line adds roleplay sessions (practice real conversations with an avatar: sales calls, feedback, complaints — scored), and a real-time interactive avatar API that embeds lip-synced conversational avatars in third-party products.",
+    "why_it_works": "It converts one-way broadcast into a loop: the video measures the viewer (quiz scores, branch choices, roleplay ratings), and the measurements feed back into the training program. For enterprise learning this is the difference between \"the training exists\" and \"the training worked.\"",
+    "genesis_implementation": "Design the avatar host's output schema to support interaction nodes (CTA / branch / quiz) as first-class scene types, and design the real-time path as a pluggable rendering layer behind a conversation interface (transcribe → reason → synthesize → render). Roleplay scoring is a product-capability pattern the training side of GENESIS can reuse: scenario card + rubric + scored transcript.",
+    "raw": "- **What it does:** Videos can carry clickable CTAs, branching paths, and\n  quizzes — the viewer chooses what happens next. A newer product line adds\n  roleplay sessions (practice real conversations with an avatar: sales calls,\n  feedback, complaints — scored), and a real-time interactive avatar API\n  that embeds lip-synced conversational avatars in third-party products.\n- **Why it works:** It converts one-way broadcast into a loop: the video\n  measures the viewer (quiz scores, branch choices, roleplay ratings), and\n  the measurements feed back into the training program. For enterprise\n  learning this is the difference between \"the training exists\" and \"the\n  training worked.\"\n- **GENESIS implementation:** Design the avatar host's output schema to\n  support interaction nodes (CTA / branch / quiz) as first-class scene types,\n  and design the real-time path as a pluggable rendering layer behind a\n  conversation interface (transcribe → reason → synthesize → render).\n  Roleplay scoring is a product-capability pattern the training side of\n  GENESIS can reuse: scenario card + rubric + scored transcript.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Provenance and Compliance Stack (machine-readable proof)",
+    "what_it_does": "The platform ships C2PA content credentials and AI labels with every video (machine-readable proof of origin that travels with the file), holds SOC 2 Type II, ISO 27001, ISO 42001 (first AI video company to achieve it) and GDPR compliance, maintains a dedicated Trust & Safety team, participates in the Content Authenticity Initiative, and honors data-deletion requests from depicted persons.",
+    "why_it_works": "Compliance is the enterprise buying criterion. C2PA credentials make provenance verifiable by machines, not just promised in marketing. ISO 42001 specifically addresses AI management systems — the standard that matters when a tool generates synthetic media of employees.",
+    "genesis_implementation": "Every artifact the GENESIS build pipeline produces should carry provenance metadata (source, engine version, consent reference, timestamp) in a machine-readable envelope — our own C2PA-style practice. This directly serves our verification-first laws (VERIFY-BEFORE-REPORT): an artifact without provenance is not shippable.",
+    "raw": "- **What it does:** The platform ships C2PA content credentials and AI labels\n  with every video (machine-readable proof of origin that travels with the\n  file), holds SOC 2 Type II, ISO 27001, ISO 42001 (first AI video company\n  to achieve it) and GDPR compliance, maintains a dedicated Trust & Safety\n  team, participates in the Content Authenticity Initiative, and honors\n  data-deletion requests from depicted persons.\n- **Why it works:** Compliance is the enterprise buying criterion. C2PA\n  credentials make provenance verifiable by machines, not just promised in\n  marketing. ISO 42001 specifically addresses AI management systems — the\n  standard that matters when a tool generates synthetic media of employees.\n- **GENESIS implementation:** Every artifact the GENESIS build pipeline\n  produces should carry provenance metadata (source, engine version,\n  consent reference, timestamp) in a machine-readable envelope — our own\n  C2PA-style practice. This directly serves our verification-first laws\n  (VERIFY-BEFORE-REPORT): an artifact without provenance is not shippable.",
+    "modules": [
+     "lab",
+     "report",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Slide-Script Briefing (one slide = one spoken beat)",
+    "use_when": "authoring the master script for an avatar video.",
+    "pattern": "Never write the script as a wall of text. Break it into slide-scoped beats: each slide carries exactly one spoken idea, sized to fit the on-screen layout.",
+    "template": " > Slide <n>: <visual layout note> > Say: <one idea, spoken aloud, 15–40 words> > On screen: <text/visual that appears while it is said> > Rule: if the spoken beat needs a second slide, the idea is too big — > split it.",
+    "raw": "- **Use when:** authoring the master script for an avatar video.\n- **Pattern:** Never write the script as a wall of text. Break it into\n  slide-scoped beats: each slide carries exactly one spoken idea, sized to\n  fit the on-screen layout.\n- **Template:**\n  > Slide <n>: <visual layout note>\n  > Say: <one idea, spoken aloud, 15–40 words>\n  > On screen: <text/visual that appears while it is said>\n  > Rule: if the spoken beat needs a second slide, the idea is too big —\n  > split it.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Document-to-Video Ingest",
+    "use_when": "the source is a document, deck, or URL rather than a script.",
+    "pattern": "Source in → outline → scene manifest → refine. The document is raw material; the outline is the editorial decision; the manifest is the production contract.",
+    "template": " > Source: <file/URL>. > Audience: <who watches, what they must know after>. > Output an outline of ≤7 beats, then a scene manifest with one spoken > beat per scene (P-01). Flag every claim in the source that is unverified. > Do not narrate the table of contents — teach, don't recite.",
+    "raw": "- **Use when:** the source is a document, deck, or URL rather than a script.\n- **Pattern:** Source in → outline → scene manifest → refine. The document\n  is raw material; the outline is the editorial decision; the manifest is\n  the production contract.\n- **Template:**\n  > Source: <file/URL>.\n  > Audience: <who watches, what they must know after>.\n  > Output an outline of ≤7 beats, then a scene manifest with one spoken\n  > beat per scene (P-01). Flag every claim in the source that is unverified.\n  > Do not narrate the table of contents — teach, don't recite.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Glossary-First Naming (declare before translating)",
+    "use_when": "any proper name, product term, or jargon appears in a video that will be localized.",
+    "pattern": "Declare the glossary BEFORE the first render. Every entry states the canonical term, its pronunciation note, and whether it stays untranslated in each target language.",
+    "template": " > Glossary for <project>: > - <term> → keep as-is in <languages> / translate in <languages> > - pronunciation note: <say it like ...> > - brand terms: never translated, never paraphrased. > A video with undeclared names is not ready to translate.",
+    "raw": "- **Use when:** any proper name, product term, or jargon appears in a video\n  that will be localized.\n- **Pattern:** Declare the glossary BEFORE the first render. Every entry\n  states the canonical term, its pronunciation note, and whether it stays\n  untranslated in each target language.\n- **Template:**\n  > Glossary for <project>:\n  > - <term> → keep as-is in <languages> / translate in <languages>\n  > - pronunciation note: <say it like ...>\n  > - brand terms: never translated, never paraphrased.\n  > A video with undeclared names is not ready to translate.",
+    "modules": [
+     "memory",
+     "report"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Script Variable Personalization",
+    "use_when": "one video must become many personalized variants (name, company, role, region).",
+    "pattern": "Write ONE master script with named variables; the renderer substitutes per-recipient values. Variables are descriptive words, never numbers, and every variable has a declared fallback.",
+    "template": " > Master: \"Hello {{first_name}}, here is your {{product}} summary for > {{region}}.\" > Variables: first_name (fallback: \"there\"), product (fallback: \"\"), region. > Rule: the fallback reading must sound natural when spoken aloud.",
+    "raw": "- **Use when:** one video must become many personalized variants\n  (name, company, role, region).\n- **Pattern:** Write ONE master script with named variables; the renderer\n  substitutes per-recipient values. Variables are descriptive words, never\n  numbers, and every variable has a declared fallback.\n- **Template:**\n  > Master: \"Hello {{first_name}}, here is your {{product}} summary for\n  > {{region}}.\"\n  > Variables: first_name (fallback: \"there\"), product (fallback: \"\"), region.\n  > Rule: the fallback reading must sound natural when spoken aloud.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Interactive Branch Map",
+    "use_when": "the video asks the viewer to choose (CTA, quiz, branching).",
+    "pattern": "Draw the decision graph before producing any scene: nodes are scenes, edges are viewer choices. No branch may dead-end.",
+    "template": " > Node A: <scene>. Choices: [<label> → Node B], [<label> → Node C]. > Every terminal node ends with a CTA or a score. > Rule: ≤3 choices per node; every path must be watchable in ≤4 minutes.",
+    "raw": "- **Use when:** the video asks the viewer to choose (CTA, quiz, branching).\n- **Pattern:** Draw the decision graph before producing any scene: nodes are\n  scenes, edges are viewer choices. No branch may dead-end.\n- **Template:**\n  > Node A: <scene>. Choices: [<label> → Node B], [<label> → Node C].\n  > Every terminal node ends with a CTA or a score.\n  > Rule: ≤3 choices per node; every path must be watchable in ≤4 minutes.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Localize-Ready Master Script",
+    "use_when": "writing the original script for a video that will ship in many languages.",
+    "pattern": "Write the master so translation is mechanical: short sentences, no idioms, no culture-bound jokes, on-screen text minimal and translatable, timing margin on every slide for longer languages.",
+    "template": " > Write for translation: sentences ≤ 20 words, zero idioms, numbers and > units in international format, on-screen text ≤ 6 words per slide. > Leave 20% timing margin — translated audio will run longer. > Hooks and CTAs must be reviewed by a native speaker, not just machine- > translated.",
+    "raw": "- **Use when:** writing the original script for a video that will ship in\n  many languages.\n- **Pattern:** Write the master so translation is mechanical: short\n  sentences, no idioms, no culture-bound jokes, on-screen text minimal and\n  translatable, timing margin on every slide for longer languages.\n- **Template:**\n  > Write for translation: sentences ≤ 20 words, zero idioms, numbers and\n  > units in international format, on-screen text ≤ 6 words per slide.\n  > Leave 20% timing margin — translated audio will run longer.\n  > Hooks and CTAs must be reviewed by a native speaker, not just machine-\n  > translated.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Script-to-Video Lifecycle (the master workflow)",
+    "body": "The canonical production path. Every avatar video job follows it.\n\n1. **INTAKE** — Receive the brief: audience, outcome, source script or\n   document. Entry: brief names the audience and the one thing the viewer\n   must know after. Exit: scope written down, or one clarifying question.\n2. **CAST** — Select avatar + voice persona (P-03), aspect ratio, brand\n   profile. Entry: brief approved. Exit: test-render probe of 1–2 slides\n   approved (P-08); otherwise re-cast.\n3. **BUILD** — Author the scene manifest: slides with per-slide beats\n   (P-01), glossary declared (P-04), layout locked.\n   Exit: manifest passes schema validation (variables named, fallbacks set).\n4. **PREVIEW** — Watermarked probe render of the full manifest.\n   Exit: pacing check (≥3s per on-screen text), layout on target aspect\n   ratio, hard-word pronunciation passes; fix-list otherwise.\n5. **MODERATE** — Script policy gate (T-12): business-appropriate content\n   only; flagged items to a human review queue.\n   Exit: PASS, or rejected with the specific policy reason.\n6. **RENDER** — Final generation, async with status poll (T-08).\n   Exit: file produced, hash recorded, provenance envelope attached (T-13).\n7. **PUBLISH** — Deliver as link/embed/package with version id; master\n   registered for living-document updates (T-09).\n   Exit: published copy is a *derived render* of the registered master.\n\n**Guarded failure modes:** lip-sync glitch on fast dialogue → re-render the\naffected scene only (never the whole video blind); moderation rejection →\nthe job stops with the reason, never proceeds silently; deleted identity\nreferenced → substitute must be re-cast, dependents flagged for re-render.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "Document-to-Video Conversion (source in, teaching out)",
+    "body": "For source material that starts as a PDF, deck, or URL.\n\n1. **INGEST** — Pull the source; extract text, structure, and assets.\n   Entry: source file/URL accessible. Exit: raw extract + asset list, or\n   \"source unreadable\" reported with evidence.\n2. **OUTLINE** — Editorial pass (P-02): ≤7 teaching beats, audience-first.\n   Exit: outline approved by the requester. *Failure guard:* a weak source\n   deck is flagged here, not carried into production — the assistant\n   improves delivery, not content strategy.\n3. **SCENES** — Expand each beat into a slide manifest (P-01), visuals\n   attached, glossary declared (P-04).\n   Exit: manifest validated; every claim in the source marked\n   verified/unverified.\n4. **REFINE** — Chat-style amendment of the manifest (tone, structure,\n   messaging) — amendments, never blind regenerates.\n   Exit: requester signs off on the manifest.\n5. **RENDER → PUBLISH** — Hand off to W-01 stages 5–7 (moderate, render,\n   publish with version id).\n\n**Guarded failure modes:** unverified claims from the source are carried\nas on-screen \"source unverified\" flags, never narrated as facts; exceeding\n7 beats → split into a series, not a longer video.",
+    "modules": [
+     "report"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Global Localization Run (one master, every market)",
+    "body": "1. **LOCK MASTER** — The source-language video is published and version-\n   pinned (T-09). Entry: master render passed W-01. Exit: master id + hash.\n2. **GLOSSARY** — Declare/refresh the term glossary (P-04): names,\n   products, pronunciation notes, per-language keep-vs-translate rules.\n   Exit: glossary versioned; no video with undeclared names proceeds.\n3. **TRANSLATE** — Script translated per target language; hooks and CTAs\n   flagged for native-speaker review (P-07).\n   Exit: translated scripts + review sign-offs for hooks/CTAs.\n4. **RE-RENDER** — Fresh render per language against the translated audio\n   (T-05); dubbed-from-finished-video assets go through the dub pipeline\n   with the line-by-line correction editor (T-06).\n   Exit: per-language render + hash + provenance.\n5. **NATIVE QA** — A native speaker watches one full render per language\n   family. Exit: PASS or fix-list (re-translate, re-render affected scenes).\n6. **SHIP** — All language renders registered as derived copies of the\n   master; a master edit later re-triggers this workflow (T-09).\n\n**Guarded failure modes:** low-resource language quality drop → flagged at\nQA, never auto-shipped; glossary conflict between languages → glossary\nowner resolves before re-render; master edited mid-run → abort the run,\nre-lock the master, restart from stage 2.",
+    "modules": [
+     "memory",
+     "report"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Template/API Batch Production (one design, many variants)",
+    "body": "For personalized or series output at scale.\n\n1. **DEFINE TEMPLATE** — Lock the scene manifest template: layout, avatar,\n   brand kit, and script with named variables (P-05). A template id is\n   minted. Entry: one approved example render. Exit: template passes a\n   fallback-reading test (every fallback sounds natural spoken aloud).\n2. **SET VARIABLES** — The data table: one row per output, columns for\n   every variable. Entry: template id. Exit: table validated — no empty\n   cells without declared fallbacks, no variable names starting with a\n   number.\n3. **BATCH SUBMIT** — Submit jobs asynchronously through the declarative\n   API (T-08), with per-job credit estimates from the shared pool (T-11).\n   Exit: all jobs accepted; any rejected submission is reported with its\n   reason, never silently dropped.\n4. **POLL** — Status poller tracks every job; completed renders are\n   hashed and stored with their variable row. Exit: N submitted = N\n   accounted (rendered or failed-with-reason) — arithmetic reconciliation.\n5. **DISTRIBUTE** — Deliver per-row: link/embed/package. Analytics attach\n   to the template id for aggregate comparison.\n   Exit: distribution list with per-output delivery proof.\n\n**Guarded failure modes:** budget overrun mid-batch → pause at the next\njob boundary, report spend, resume only on approval; variable substitution\nbreaks pronunciation → the row is re-rendered from the correction queue,\nnot shipped as-is; template changed mid-batch → in-flight jobs finish on\nthe old template, new jobs take the new one, versions never mixed.",
+    "modules": [
+     "report",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "W-05",
+    "title": "Living Video Maintenance (the program, not the file)",
+    "body": "The workflow that keeps a video library current after publishing.\n\n1. **EDIT** — A detail changes: edit the master text/manifest.\n   Entry: change request with the exact new wording.\n   Exit: master amended with a change-log entry.\n2. **RE-RENDER** — Affected scenes re-render; dependents (translations,\n   dubs, variants) re-triggered per T-09.\n   Exit: new master hash + per-dependent render status.\n3. **AUTO-PROPAGATE** — Shared links, embeds, and LMS packages update to\n   the new version automatically.\n   Exit: propagation receipt per channel (N channels in = N updated).\n4. **ANALYZE** — Built-in analytics: views, completion, per-language and\n   per-version comparison.\n   Exit: a short read-out: what viewers finished, where they dropped.\n5. **ITERATE** — Low-completion segments feed back into a new EDIT cycle.\n   Exit: next change request, or \"holding — metrics healthy.\"\n\n**Guarded failure modes:** propagation failure on one channel → the\nchannel is retried, then escalated; the master version is never rolled\nback to hide it; a revoked identity (P-10) triggers re-render or\nretirement of affected videos across all channels before the next\npropagation cycle.\n\n---\n\n## Cross-workflow rules\n\n- **No orphan renders:** every output references its master id. A render\n  without a master is not shippable (composition rule, Master-Script-First).\n- **Arithmetic honesty:** batch and localization runs reconcile counts\n  (submitted = rendered + failed-with-reason); propagation reconciles\n  channels (in = updated). Unreconciled numbers never reach the father.\n- **Independent re-review:** any capability the workflow newly depends on\n  (a new engine version, a new language pair) passes our merciless review\n  (LAW-050) before production use — the ARC-AGI-3 lesson.\n- **Voice guardrail:** workflows W-01/W-02/W-03 include voice-synthesis\n  stages as GENESIS product capability. The 369 publish path runs the same\n  workflows with voice stages disabled — the NO AI VOICE LAW is enforced\n  at the gate, not by trust.",
+    "modules": [
+     "memory",
+     "report",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "elevenlabs": {
+  "techniques": [
+   {
+    "id": "T-10",
+    "title": "Provenance Watermarking (detectable synthetic audio)",
+    "what_it_does": "Every generation is digitally watermarked, with a public classifier that can flag audio made with the tool; back-tracking systems can identify the source and purpose of a voice clone. Claimed detection precision: 99% (vendor-reported).",
+    "why_it_works": "Watermarks don't stop misuse — they stop DENIABILITY. Detection creates accountability for synthetic audio downstream.",
+    "genesis_implementation": "Every audio file the voice module renders is watermarked + recorded in a provenance log (voice_id, model, timestamp, text hash, intended use). GENESIS's own classifier can verify \"was this made by us?\" — and critically, the 369 publish gate can detect AI voice and fail closed on it. Log retention policy: provenance records are permanent; raw text is not.",
+    "raw": "- **What it does:** Every generation is digitally watermarked, with a public\n  classifier that can flag audio made with the tool; back-tracking systems can\n  identify the source and purpose of a voice clone. Claimed detection\n  precision: 99% (vendor-reported).\n- **Why it works:** Watermarks don't stop misuse — they stop DENIABILITY.\n  Detection creates accountability for synthetic audio downstream.\n- **GENESIS implementation:** Every audio file the voice module renders is\n  watermarked + recorded in a provenance log (voice_id, model, timestamp,\n  text hash, intended use). GENESIS's own classifier can verify \"was this\n  made by us?\" — and critically, the 369 publish gate can detect AI voice and\n  fail closed on it. Log retention policy: provenance records are permanent;\n  raw text is not.",
+    "modules": [
+     "report",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-08",
+    "title": "Watermark-and-Log Every Render",
+    "use_when": "any audio is generated, ever.",
+    "pattern": "Every render is watermarked and provenance-logged — voice_id, model tier, timestamp, text hash, settings, intended use. No anonymous audio leaves the voice module.",
+    "template": " > Provenance record = {voice_id, model_tier, text_hash, settings, ts, use}. > The 369 publish gate reads this log: any voice track with synthetic > provenance is rejected from published content — fail-closed, no override. --- ## Composition rule A full voice job is P-01 (write for ears) + P-05 (pronunciation pre-flight) + P-03 (chunking) + P-04 (preset) + P-02 (direction tags) + P-08 (watermark/log). Add P-06 when the voice isn't the father's, P-07 when the render is high-stakes. ## Sources Distilled from public ElevenLabs user guides (fahimai.com), cloning tutorials (aiproductweekly, goldmidi community), API skill docs (jeremylongshore/claude-code-plugins-plus-skills, griptape-nodes, convonet), and independent reviews (memeburn, unite.ai, saas.pet). All wording is our own.",
+    "raw": "- **Use when:** any audio is generated, ever.\n- **Pattern:** Every render is watermarked and provenance-logged —\n  voice_id, model tier, timestamp, text hash, settings, intended use. No\n  anonymous audio leaves the voice module.\n- **Template:**\n  > Provenance record = {voice_id, model_tier, text_hash, settings, ts, use}.\n  > The 369 publish gate reads this log: any voice track with synthetic\n  > provenance is rejected from published content — fail-closed, no override.\n\n---\n\n## Composition rule\n\nA full voice job is P-01 (write for ears) + P-05 (pronunciation pre-flight) +\nP-03 (chunking) + P-04 (preset) + P-02 (direction tags) + P-08\n(watermark/log). Add P-06 when the voice isn't the father's, P-07 when the\nrender is high-stakes.\n\n## Sources\n\nDistilled from public ElevenLabs user guides (fahimai.com), cloning tutorials\n(aiproductweekly, goldmidi community), API skill docs\n(jeremylongshore/claude-code-plugins-plus-skills, griptape-nodes, convonet),\nand independent reviews (memeburn, unite.ai, saas.pet). All wording is our\nown.",
+    "modules": [
+     "report",
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "fishaudio": {
+  "techniques": [
+   {
+    "id": "T-11",
+    "title": "Rich-Transcription Round-Trip QC",
+    "what_it_does": "A rich-transcription model (fine-tuned to transcribe words AND annotate vocal events/turns as natural-language instructions) is used during RL to re-transcribe generated audio and diff it against the original prompt — penalizing hallucinations, missing words, and ignored vocal instructions automatically.",
+    "why_it_works": "It turns QC into a closed loop: generation → listen back (machine) → compare → score. Catches the most common TTS failure modes (skipped/repeated words, wrong emotion) without human ears.",
+    "genesis_implementation": "Every non-trivial voice render passes through automatic round-trip transcription; word-error and instruction-adherence deltas are logged. A render that drops or adds words FAILS closed and is re-rendered before any human listens. This is the cheapest possible verify step (T-01 pattern from the Astra pack, applied to voice).",
+    "raw": "- **What it does:** A rich-transcription model (fine-tuned to transcribe\n  words AND annotate vocal events/turns as natural-language instructions)\n  is used during RL to re-transcribe generated audio and diff it against\n  the original prompt — penalizing hallucinations, missing words, and\n  ignored vocal instructions automatically.\n- **Why it works:** It turns QC into a closed loop: generation → listen\n  back (machine) → compare → score. Catches the most common TTS failure\n  modes (skipped/repeated words, wrong emotion) without human ears.\n- **GENESIS implementation:** Every non-trivial voice render passes through\n  automatic round-trip transcription; word-error and instruction-adherence\n  deltas are logged. A render that drops or adds words FAILS closed and is\n  re-rendered before any human listens. This is the cheapest possible\n  verify step (T-01 pattern from the Astra pack, applied to voice).",
+    "modules": [
+     "lab",
+     "report",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-02",
+    "title": "TTS Production Pipeline (script → finished audio)",
+    "body": "The pipeline for any non-conversational speech (briefings, announcements,\nnarrations for the father).\n\n1. **INTAKE** — Text + intent (briefing / announcement) + target voice_id\n   + direction note. Entry: voice has a valid P-07 provenance header.\n   Exit: intake accepted, or rejected (missing provenance = no render).\n2. **NORMALIZE** — P-08 + P-01: strip unpronounceable content, expand\n   numbers/acronyms, compute input byte count and cost estimate. Entry:\n   intake accepted. Exit: render-ready script + byte cost, or escalation\n   if over budget.\n3. **DIRECT** — Compile direction (P-02 tags / P-03 director's note) onto\n   the normalized script. Entry: render-ready script. Exit: directed\n   script with inspectable tag stream.\n4. **RENDER** — Generate via the two-stage path (T-01/T-02): semantic plan\n   then acoustic render, chunked streaming for long text. Entry: directed\n   script. Exit: raw audio.\n5. **ROUND-TRIP QC** — Automatic re-transcription (T-11): diff words and\n   vocal instructions against the prompt. Check the triple rubric (T-10):\n   semantic accuracy, acoustic quality, speaker similarity. Entry: raw\n   audio. Exit: PASS → delivery; FAIL → W-02 returns to RENDER (with\n   P-06 patch-one-word first), never to delivery.\n6. **DELIVER** — Final audio to the requesting module. Entry: QC PASS.\n   Exit: delivered with QC report attached (word-error delta, bytes in,\n   seconds out, render cost).\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Synthetic audio reaches 369 content | Provenance tag checked at delivery; publish gate fails closed on synthetic |\n| Mispronunciations / skipped words ship | Round-trip QC fails closed; patch-before-rerender keeps cost down |\n| Cost surprise on long renders | Byte count + estimate reported at NORMALIZE, before render |\n| Wrong emotion lands on the wrong word | Tag stream is inspectable at DIRECT; QC checks instruction adherence |",
+    "modules": [
+     "lab",
+     "report",
+     "scheduler",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "higgsfield": {
+  "techniques": [
+   {
+    "id": "T-04",
+    "title": "Structured Shot Schema (SCENE / IDENTITY / SHOTS / ANATOMY / PHYSICS / CONTINUITY / LIGHTING / AUDIO / LOOK)",
+    "what_it_does": "A long production prompt is organized into labeled sections: SCENE (setting summary), SUBJECT AND IDENTITY, SHOTS (timestamped shot list), ANATOMY AND BIOMECHANICS (explicit body physics, e.g. how a hand grips a brake lever), PHYSICS (particles, debris, forces), CONTINUITY (what must NOT change between shots), LIGHTING, AUDIO, LOOK (style + aspect). Each section has a defined job; the \"bad prompt\" failure mode is a shot list of angle names with no assigned job per shot.",
+    "why_it_works": "Diffusion video models lose focal points when every sentence is \"epic cinematic\". Sectioning forces the prompt author to assign each shot a job (establish, product close-up, action payoff), and dedicated anatomy/physics sections suppress the classic hand/deformation artifacts.",
+    "genesis_implementation": "Make this schema the mandatory brief format for any GENESIS job that produces a multi-shot video (lab builder scripts, the 369 content team's reel briefs). Provide a brief-template file with the nine sections pre-labeled; the pre-generation gate rejects briefs with an empty CONTINUITY section (that's where \"the same product must look the same\" lives — the section most prompters skip).",
+    "raw": "- **What it does:** A long production prompt is organized into labeled\n  sections: SCENE (setting summary), SUBJECT AND IDENTITY, SHOTS (timestamped\n  shot list), ANATOMY AND BIOMECHANICS (explicit body physics, e.g. how a hand\n  grips a brake lever), PHYSICS (particles, debris, forces), CONTINUITY\n  (what must NOT change between shots), LIGHTING, AUDIO, LOOK (style +\n  aspect). Each section has a defined job; the \"bad prompt\" failure mode is a\n  shot list of angle names with no assigned job per shot.\n- **Why it works:** Diffusion video models lose focal points when every\n  sentence is \"epic cinematic\". Sectioning forces the prompt author to assign\n  each shot a job (establish, product close-up, action payoff), and dedicated\n  anatomy/physics sections suppress the classic hand/deformation artifacts.\n- **GENESIS implementation:** Make this schema the mandatory brief format for\n  any GENESIS job that produces a multi-shot video (lab builder scripts, the\n  369 content team's reel briefs). Provide a brief-template file with the nine\n  sections pre-labeled; the pre-generation gate rejects briefs with an empty\n  CONTINUITY section (that's where \"the same product must look the same\"\n  lives — the section most prompters skip).",
+    "modules": [
+     "lab",
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "flow": {
+  "techniques": [
+   {
+    "id": "T-04",
+    "title": "SceneBuilder: Timeline Clip Assembly (rushes → sequence)",
+    "what_it_does": "A timeline tool to arrange, trim, and reorder AI-generated clips into a scene — treating AI clips like real footage rushes. Extend continues a clip from its last frame; Jump To has Gemini analyze how the previous clip ended and generate a new shot that preserves character context in a different setting.",
+    "why_it_works": "Short generations (4–10s each) are individually useless for narrative; the timeline converts disposable clips into a cuttable sequence. Jump To automates the most painful continuity job — the transition — with the previous clip as context.",
+    "genesis_implementation": "Any multi-shot deliverable must pass through a scene-assembly stage: each clip is a timed entry with in/out points and a transition note. For 369 reels this is the edit plan: beats timed to the REEL TEXT-TIMING LAW (each text ≥3s), clips sequenced and logged before any render. Never assemble a \"final\" from a single generation.",
+    "raw": "- **What it does:** A timeline tool to arrange, trim, and reorder AI-generated\n  clips into a scene — treating AI clips like real footage rushes. Extend\n  continues a clip from its last frame; Jump To has Gemini analyze how the\n  previous clip ended and generate a new shot that preserves character\n  context in a different setting.\n- **Why it works:** Short generations (4–10s each) are individually useless\n  for narrative; the timeline converts disposable clips into a cuttable\n  sequence. Jump To automates the most painful continuity job — the\n  transition — with the previous clip as context.\n- **GENESIS implementation:** Any multi-shot deliverable must pass through a\n  scene-assembly stage: each clip is a timed entry with in/out points and a\n  transition note. For 369 reels this is the edit plan: beats timed to the\n  REEL TEXT-TIMING LAW (each text ≥3s), clips sequenced and logged before\n  any render. Never assemble a \"final\" from a single generation.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Native Audio Single Pass (dialogue, SFX, ambience together)",
+    "what_it_does": "Veo 3+ generates synchronized dialogue, sound effects, and ambient audio natively alongside the video in one pass — lip-sync rhythm, environmental sound matching the scene (a car on wet road sounds like wet road).",
+    "why_it_works": "Separate audio pipelines create sync drift and double the QC surface. Single-pass generation binds sound to the pixels that caused it.",
+    "genesis_implementation": "For our AI-video jobs: always request audio-at-generation when the model supports it; score the audio as part of the same QC gate as the picture (desync or wrong ambience = FAIL). Note the constraint: extended sequences and add/remove-object edits run on older models without audio — plan the audio lane separately for those (or re-generate the audio at assembly). 369 content is English-only voice; native audio is a floor for ambience/SFX, not a substitute for scripted voiceover where required.",
+    "raw": "- **What it does:** Veo 3+ generates synchronized dialogue, sound effects,\n  and ambient audio natively alongside the video in one pass — lip-sync\n  rhythm, environmental sound matching the scene (a car on wet road sounds\n  like wet road).\n- **Why it works:** Separate audio pipelines create sync drift and double\n  the QC surface. Single-pass generation binds sound to the pixels that\n  caused it.\n- **GENESIS implementation:** For our AI-video jobs: always request\n  audio-at-generation when the model supports it; score the audio as part of\n  the same QC gate as the picture (desync or wrong ambience = FAIL). Note\n  the constraint: extended sequences and add/remove-object edits run on\n  older models without audio — plan the audio lane separately for those\n  (or re-generate the audio at assembly). 369 content is English-only voice;\n  native audio is a floor for ambience/SFX, not a substitute for scripted\n  voiceover where required.",
+    "modules": [
+     "lab",
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-05",
+    "title": "Audio-as-Prompt (sound written into the shot)",
+    "use_when": "the shot needs dialogue, sync SFX, or a specific ambience.",
+    "pattern": "Write the sound as part of the prompt, in one pass with the picture.",
+    "template": " > PICTURE: <the visual prompt> > AUDIO: ambience: <e.g. rain on metal, distant traffic>; sfx: <footsteps, >   glass shatter, timed to the action>; dialogue: \"<the spoken line>\" — >   spoken by the subject, lips in sync. > Fallback: if the edit model drops audio, plan a separate audio pass at > assembly — never assume audio survives extension.",
+    "raw": "- **Use when:** the shot needs dialogue, sync SFX, or a specific ambience.\n- **Pattern:** Write the sound as part of the prompt, in one pass with the\n  picture.\n- **Template:**\n  > PICTURE: <the visual prompt>\n  > AUDIO: ambience: <e.g. rain on metal, distant traffic>; sfx: <footsteps,\n  >   glass shatter, timed to the action>; dialogue: \"<the spoken line>\" —\n  >   spoken by the subject, lips in sync.\n  > Fallback: if the edit model drops audio, plan a separate audio pass at\n  > assembly — never assume audio survives extension.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-02",
+    "title": "Shot Assembly (SceneBuilder discipline)",
+    "body": "For building a sequence from generated clips (lab + report + the 369 video\neditor's job).\n\n1. **COLLECT** — Every clip arrives with its provenance: prompt, model, tier,\n   ingredients, settings. No clip enters the timeline anonymously.\n   Exit: asset register complete.\n2. **ORDER** — Drag into narrative order on the timeline; each entry carries\n   in/out points and a transition note (cut / match-cut / extend-hop).\n   Exit: sequence runs start to finish without gaps.\n3. **CONTINUITY CHECK** — Adjacent clips compared for: subject identity,\n   lighting direction, camera direction (the 180° rule), audio continuity.\n   Exit: all mismatches flagged; Jump-To-style bridges (T-04) planned for\n   the gaps.\n4. **BRIDGE** — Generate transition hops only where flagged, with\n   ingredients re-anchored (T-01) and max-hop discipline (T-11).\n   Exit: bridges QC'd individually before joining.\n5. **TIMING** — Text overlays and beats timed; export clips individually\n   (never rely on the builder's export for final — independent evidence\n   shows audio strips on export, so stitch in the real NLE).\n   Exit: timeline lock.\n\nEntry: rendered clips + register. Exit: locked timeline, individually\nexported clips, stitch note for the NLE.\nFailure mode guarded: \"export and ship from the builder\" — blocked by the\nindividual-export rule; audio loss is silent otherwise.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "artflow": {
+  "techniques": [
+   {
+    "id": "T-04",
+    "title": "Style-as-Parameter (curated style library)",
+    "what_it_does": "~19 named styles (Cinematic, Digital Art, Fantasy, Watercolor, Oil Painting, Realistic, 3D Cartoon, Neo Punk, Vintage Film…) are applied as a single parameter on top of any subject — identity and scene stay, the rendering language changes.",
+    "why_it_works": "It decouples WHAT is shown from HOW it is rendered. Users never rewrite prompts to get a new look; they swap one token. This is also a brand-consistency engine: a fixed style parameter across a series reads as one family.",
+    "genesis_implementation": "[FEEDS-369-LIBRARY] Codify the 369 Best Color Combos system the same way: style = parameter, not prose. Every piece carries a `style_id` (e.g. `combo-chrome-red-black-v3`); the lab module resolves it to palette + typography + treatment tokens before generation. Trend rotation = adding new style entries, never rewriting prompts.",
+    "raw": "- **What it does:** ~19 named styles (Cinematic, Digital Art, Fantasy,\n  Watercolor, Oil Painting, Realistic, 3D Cartoon, Neo Punk, Vintage Film…)\n  are applied as a single parameter on top of any subject — identity and scene\n  stay, the rendering language changes.\n- **Why it works:** It decouples WHAT is shown from HOW it is rendered. Users\n  never rewrite prompts to get a new look; they swap one token. This is also a\n  brand-consistency engine: a fixed style parameter across a series reads as one\n  family.\n- **GENESIS implementation:** [FEEDS-369-LIBRARY] Codify the 369 Best Color\n  Combos system the same way: style = parameter, not prose. Every piece carries\n  a `style_id` (e.g. `combo-chrome-red-black-v3`); the lab module resolves it to\n  palette + typography + treatment tokens before generation. Trend rotation =\n  adding new style entries, never rewriting prompts.",
+    "modules": [
+     "lab",
+     "report"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Template Library with Theme Packs",
+    "what_it_does": "Hundreds of pre-composed templates (portraits, reels, posters, social posts) grouped by theme (Professional, Lifestyle, Travel, Fantasy, Activities, Romantic, Celebration) — non-experts start from a working composition and swap in their identity.",
+    "why_it_works": "Templates compress expertise into a starting point: layout, safe areas, and hierarchy are already solved; the user contributes only identity + text. Speed for the many, consistency for the brand.",
+    "genesis_implementation": "[FEEDS-369-LIBRARY] The content team's format system becomes a template registry: each format (reel cover, carousel card, story) has a machine-readable template (canvas, zones, type slots, footer lockup). Builders instantiate templates, never hand-compose. New formats enter only via the format authority's approval — templates are code-gated.",
+    "raw": "- **What it does:** Hundreds of pre-composed templates (portraits, reels,\n  posters, social posts) grouped by theme (Professional, Lifestyle, Travel,\n  Fantasy, Activities, Romantic, Celebration) — non-experts start from a working\n  composition and swap in their identity.\n- **Why it works:** Templates compress expertise into a starting point: layout,\n  safe areas, and hierarchy are already solved; the user contributes only\n  identity + text. Speed for the many, consistency for the brand.\n- **GENESIS implementation:** [FEEDS-369-LIBRARY] The content team's format\n  system becomes a template registry: each format (reel cover, carousel card,\n  story) has a machine-readable template (canvas, zones, type slots, footer\n  lockup). Builders instantiate templates, never hand-compose. New formats\n  enter only via the format authority's approval — templates are code-gated.",
+    "modules": [
+     "lab",
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-04",
+    "title": "Template-Driven Campaign (theme packs at volume)",
+    "body": "- **Entry criteria:** campaign brief (theme, count, platforms); template set\n  approved by the format authority; identity tokens registered (or \"no\n  identity\" declared for non-character pieces).\n- **Steps:**\n  1. Instantiate templates: each slot filled by P-08 (identity + ≤10-word\n     scene keywords; text zones reserved, never AI-generated text).\n  2. Batch generate (variant batches per slot, W-02 selection per slot).\n  3. Series continuity pass: all pieces checked against the campaign manifest\n     as a SET, not individually — the family must read as one.\n  4. Bulk export at per-platform specs; registry updated with piece ids,\n     templates, costs.\n- **Exit criteria:** full set delivered at spec; set-level continuity passing;\n  per-piece costs reconciled to campaign budget.\n- **Guarded failure modes:**\n  - One slot keeps failing → swap the template for that slot (templates are\n    interchangeable by design) rather than burning credits on a bad fit.\n  - Set-level continuity fails → identify the outlier piece(s); regenerate\n    the outliers against the manifest, never \"accept the set anyway.\"\n  - AI-generated text appears in an image → piece rejected; text is rendered\n    by the type system downstream, never by the generator (PERSIAN/typography\n    laws apply to all on-piece text).\n\n## Sources\n\nSynthesized from Artflow's public pipeline documentation (walkthrough\nsummaries, tool-directory feature descriptions, review sites) as listed in\nARTFLOW_TECHNIQUES.md. Structure and failure modes are our own design.",
+    "modules": [
+     "lab",
+     "report",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "chatgpt-images": {
+  "techniques": [
+   {
+    "id": "T-12",
+    "title": "Provenance Marking (C2PA metadata)",
+    "what_it_does": "Generated images carry C2PA content-credential metadata marking them as AI-generated, alongside the vendor's safety guardrails (content filtering with a moderation sensitivity control).",
+    "why_it_works": "Provenance survives where labels don't: metadata travels with the file. For a network that must track what is AI-made vs. real footage (our breaking-news and review requirements), embedded provenance is the only honest bookkeeping.",
+    "genesis_implementation": "Adopt the same discipline internally: every AI-generated asset in our world gets metadata stamped (tool, model, date, job id, seed) at creation time. Human/real art gets a different stamp. Our review gates can then enforce rules by provenance (e.g. \"no AI faces in this slot\") instead of by guesswork. Note the compliance tension with our NO AI DISCLOSURE law: internal provenance (metadata) is mandatory; visible disclosure in 369 output is governed by the law, which stands per YZ's ruling.",
+    "raw": "- **What it does:** Generated images carry C2PA content-credential metadata\n  marking them as AI-generated, alongside the vendor's safety guardrails\n  (content filtering with a moderation sensitivity control).\n- **Why it works:** Provenance survives where labels don't: metadata travels\n  with the file. For a network that must track what is AI-made vs. real\n  footage (our breaking-news and review requirements), embedded provenance\n  is the only honest bookkeeping.\n- **GENESIS implementation:** Adopt the same discipline internally: every\n  AI-generated asset in our world gets metadata stamped (tool, model,\n  date, job id, seed) at creation time. Human/real art gets a different\n  stamp. Our review gates can then enforce rules by provenance (e.g. \"no\n  AI faces in this slot\") instead of by guesswork. Note the compliance\n  tension with our NO AI DISCLOSURE law: internal provenance (metadata)\n  is mandatory; visible disclosure in 369 output is governed by the law,\n  which stands per YZ's ruling.",
+    "modules": [
+     "lab",
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "chatgpt": {
+  "techniques": [
+   {
+    "id": "T-07",
+    "title": "Co-Editing Workspace (Canvas)",
+    "what_it_does": "When the assistant detects a writing or coding task, it opens a split-screen workspace: document/code on one side, chat on the other. Users edit directly or highlight a section and ask for a targeted change; the assistant edits only that section. One-click shortcuts apply common transforms (length, tone, reading level, code review, translate). A version-history slider lets users inspect and restore any prior draft; export goes to PDF/docx/md.",
+    "why_it_works": "Chat regenerates everything; co-editing changes one thing. Targeted edits preserve intent and reduce token waste; version history makes experimentation safe (the #1 blocker to asking for bold changes); shortcuts turn repeated prompt patterns into buttons.",
+    "genesis_implementation": "The report module should produce artifacts as versioned documents (each edit = new version, restorable), with a \"targeted edit\" API: `edit_section(doc, range, instruction)` instead of regenerate-all. Offer shortcut transforms for our domain (brand-style polish, Persian↔English tone shifts, format checks). Version history is mandatory — no destructive single-state documents in GENESIS.",
+    "raw": "- **What it does:** When the assistant detects a writing or coding task, it\n  opens a split-screen workspace: document/code on one side, chat on the\n  other. Users edit directly or highlight a section and ask for a targeted\n  change; the assistant edits only that section. One-click shortcuts apply\n  common transforms (length, tone, reading level, code review, translate).\n  A version-history slider lets users inspect and restore any prior draft;\n  export goes to PDF/docx/md.\n- **Why it works:** Chat regenerates everything; co-editing changes one thing.\n  Targeted edits preserve intent and reduce token waste; version history\n  makes experimentation safe (the #1 blocker to asking for bold changes);\n  shortcuts turn repeated prompt patterns into buttons.\n- **GENESIS implementation:** The report module should produce artifacts as\n  versioned documents (each edit = new version, restorable), with a\n  \"targeted edit\" API: `edit_section(doc, range, instruction)` instead of\n  regenerate-all. Offer shortcut transforms for our domain (brand-style\n  polish, Persian↔English tone shifts, format checks). Version history is\n  mandatory — no destructive single-state documents in GENESIS.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-08",
+    "title": "Retry-and-Branch Refinement",
+    "use_when": "an output is close but not right (Canvas-era pattern).",
+    "pattern": "Regenerate the specific failing part, or branch the conversation to try an alternative, instead of restarting the whole job. Keep the good; attack the weak.",
+    "template": " > Keep everything except: <the failing part>. > Try: <alternative approach> for that part only. > If the second attempt is worse, restore the first — report both.",
+    "raw": "- **Use when:** an output is close but not right (Canvas-era pattern).\n- **Pattern:** Regenerate the specific failing part, or branch the\n  conversation to try an alternative, instead of restarting the whole job.\n  Keep the good; attack the weak.\n- **Template:**\n  > Keep everything except: <the failing part>.\n  > Try: <alternative approach> for that part only.\n  > If the second attempt is worse, restore the first — report both.",
+    "modules": [
+     "report"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ }
+}

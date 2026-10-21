@@ -1,0 +1,6 @@
+# genesis-scheduler requirements
+# Core module is stdlib-only (subprocess, json, re, platform, ctypes in recipes).
+# No third-party dependencies required on Windows or Linux.
+#
+# Optional (dev only):
+#   pytest>=8   -- test suite

@@ -1,0 +1,9 @@
+# Runtime dependencies for genesis-hands (Windows 10/11, Python 3.12)
+# Zero spend: all packages are free/open-source.
+
+pywinauto>=0.6.8; sys_platform == "win32"   # local desktop backend (Windows-only)
+playwright>=1.40.0                           # web backend (cross-platform)
+# After install on Windows, also run once:  python -m playwright install chromium
+
+# Dev/test (not needed at runtime):
+# pytest>=8.0

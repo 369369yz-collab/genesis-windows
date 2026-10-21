@@ -1,0 +1,6 @@
+# genesis-tempemail requirements
+# Core module (tempemail.py) is STDLIB-ONLY: urllib, json, os, time.
+# No third-party runtime dependencies. Zero spend, no credentials.
+#
+# Test tooling (dev only, not shipped in the Windows bundle):
+pytest>=8.0

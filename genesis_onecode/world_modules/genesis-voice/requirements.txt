@@ -1,0 +1,5 @@
+# genesis-voice dependencies (Windows 10/11, Python 3.12, bundled venv)
+numpy>=1.26
+webrtcvad>=2.0.10          # VAD gating in mic capture; pure-Python energy fallback if missing
+sounddevice>=0.4.6         # mic capture; needs the PortAudio native library on the host
+pytest>=8.0                # dev/test only

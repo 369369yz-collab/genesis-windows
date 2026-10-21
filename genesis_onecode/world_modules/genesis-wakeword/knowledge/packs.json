@@ -1,0 +1,115 @@
+{
+ "elevenlabs": {
+  "techniques": [
+   {
+    "id": "T-05",
+    "title": "Chunked WebSocket Streaming (sentence-boundary flush)",
+    "what_it_does": "The TTS WebSocket (`stream-input` endpoint) accepts a space as Beginning-of-Stream, receives text chunks as they are generated, and emits base64 audio frames as each sentence boundary is reached (`. ? !`), never waiting for the full LLM output. Time-to-first-audio: ~150–300 ms with Flash v2.5; v4 Turbo speaks in ~150 ms.",
+    "why_it_works": "The LLM and the vocoder overlap in time. Playing audio before the sentence is finished decouples perceived latency from total generation time — conversation feels real-time.",
+    "genesis_implementation": "The voice module's conversational path runs on a persistent WebSocket with chunked text input and sentence-boundary flush. Pre-rendered narration (audiobooks, notifications) uses the cheaper REST path — the routing rule is REST vs streaming by interactivity need.",
+    "raw": "- **What it does:** The TTS WebSocket (`stream-input` endpoint) accepts a\n  space as Beginning-of-Stream, receives text chunks as they are generated,\n  and emits base64 audio frames as each sentence boundary is reached (`. ? !`),\n  never waiting for the full LLM output. Time-to-first-audio: ~150–300 ms\n  with Flash v2.5; v4 Turbo speaks in ~150 ms.\n- **Why it works:** The LLM and the vocoder overlap in time. Playing audio\n  before the sentence is finished decouples perceived latency from total\n  generation time — conversation feels real-time.\n- **GENESIS implementation:** The voice module's conversational path runs on\n  a persistent WebSocket with chunked text input and sentence-boundary flush.\n  Pre-rendered narration (audiobooks, notifications) uses the cheaper REST\n  path — the routing rule is REST vs streaming by interactivity need.",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Real-Time Conversational Loop (father talks, GENESIS answers)",
+    "body": "The low-latency voice loop for daily interaction.\n\n1. **LISTEN** — Wakeword (wakeword module) → capture utterance; VAD\n   endpoint detection; STT commit on silence. Exit: committed transcript.\n2. **THINK** — LLM generates the reply; text streams chunk-by-chunk.\n   Exit: text stream started.\n3. **SPEAK** — Persistent TTS WebSocket; send space (BOS), stream text\n   chunks as they arrive, flush audio at each sentence boundary\n   (T-05). Flash-tier model for minimal latency. Exit: first audio\n   chunk within the latency budget (~150–300 ms target).\n4. **BARGE-IN** — If the father starts speaking, interrupt the current\n   stream, close the context, and return to LISTEN. Exit: no overlapping\n   speech beyond ~300 ms.\n5. **LOG** — Transcript + audio provenance stored (P-08). Exit: session\n   record complete.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Perceived latency kills the conversation | Streaming, not batch: audio plays before the full reply exists |\n| GENESIS talks over the father | Barge-in with hard interrupt; speech never queues behind itself |\n| Cloud voice dependency at runtime | Fallback: if the streaming service is unreachable, degrade to a\n  local voice or text — never go silent |",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "fishaudio": {
+  "techniques": [
+   {
+    "id": "T-05",
+    "title": "Plain-Language Direction Layer (Drama 3)",
+    "what_it_does": "The newest generation (Drama 3, gated preview) accepts direction as ordinary natural-language descriptions of tone, pacing, and character — no rigid tag syntax, no parameter panel. It reportedly handles mid-sentence voice shifts and direction edits via re-description.",
+    "why_it_works": "Directors think in words, not sliders. A natural-language direction layer removes the translation step between \"say it like you're in a hurry\" and the 12 parameter tweaks that currently approximate it.",
+    "genesis_implementation": "Layer a director's-note field over the tag system: free-form English description → parsed into the same word-level tag stream (T-04) as a first-class input. This makes direction accessible to non-technical users (the father) without losing the precision of the tag layer underneath.",
+    "raw": "- **What it does:** The newest generation (Drama 3, gated preview) accepts\n  direction as ordinary natural-language descriptions of tone, pacing, and\n  character — no rigid tag syntax, no parameter panel. It reportedly handles\n  mid-sentence voice shifts and direction edits via re-description.\n- **Why it works:** Directors think in words, not sliders. A\n  natural-language direction layer removes the translation step between\n  \"say it like you're in a hurry\" and the 12 parameter tweaks that\n  currently approximate it.\n- **GENESIS implementation:** Layer a director's-note field over the tag\n  system: free-form English description → parsed into the same word-level\n  tag stream (T-04) as a first-class input. This makes direction accessible\n  to non-technical users (the father) without losing the precision of the\n  tag layer underneath.",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Live Conversational Loop (streaming dialogue)",
+    "body": "The real-time voice path: the father speaks, GENESIS answers aloud with\nlow latency.\n\n1. **LISTEN** — Capture the father's utterance (wakeword module hands off\n   the turn). Entry: turn detected. Exit: audio chunk stream + end-of-turn\n   signal.\n2. **THINK** — Language model produces the reply text + a brief direction\n   (tone of the reply). Entry: end-of-turn. Exit: reply text + direction,\n   within the think budget.\n3. **STREAM** — Render with `latency: balanced` (T-08), stream chunks as\n   they arrive, target sub-500 ms time-to-first-audio. Entry: reply text\n   ready. Exit: first chunk playing, or fallback escalation.\n4. **TURN-TAKE** — Handle interruption: if the father speaks mid-reply,\n   stop the stream, keep the cutoff transcript, and return to LISTEN with\n   context preserved. Entry: new speech while streaming. Exit: clean stop\n   + resume state.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Latency blows the conversational budget | Latency tier logged per turn; persistent misses escalate to shorter replies |\n| Interruption loses the thread | Cutoff transcript is retained; next turn continues, not restarts |\n| Render fails mid-stream | Fallback: finish the turn as text (chat), never as silence |\n| Streaming cost spikes | Balanced-tier only for live turns; narration uses normal-tier (W-02) |",
+    "modules": [
+     "hands",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ }
+}

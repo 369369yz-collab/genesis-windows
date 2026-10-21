@@ -1,7 +1,19 @@
 """extended_mind.py — ADAPTER: guarded bridge from the ONE-CODE local mind
-to the live 369-world agent mesh at content_team/genesis_windows/modules/.
+to the 369-world agent mesh (the 14 world modules).
 
-Adapter-not-rewrite law: the 14 world modules are consumed, never copied.
+Embed note (Phase 3, 2026-10-21): the modules were originally consumed
+in place from content_team/genesis_windows/modules/ under the
+adapter-not-rewrite law. YZ's embed law (2026-10-16: the whole 369
+world lives inside GENESIS) superseded that for the shipped app — the
+14 modules are now ALSO vendored verbatim into genesis_onecode/
+world_modules/ (see world_modules/PROVENANCE.md), because the VM path
+does not exist on YZ's PC. This adapter still only CONSUMES them at
+runtime (guarded importlib loads, never modified). Default resolution:
+  (a) explicit modules_dir argument,
+  (b) env GENESIS_WORLD_MODULES,
+  (c) the vendored genesis_onecode/world_modules/ inside the app,
+  (d) the legacy VM path (keeps VM-side development working).
+
 Every import is guarded (importlib); if the world code is absent or a module
 fails to load, this adapter NEVER raises — it returns an explicit degraded
 result instead. A degraded result is honest data, not an exception.
@@ -39,6 +51,27 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ONECODE_ROOT = os.path.dirname(_HERE)
 _DEFAULT_MODULES_DIR = os.path.expanduser(
     "~/workspace/content_team/genesis_windows/modules")
+_VENDORED_MODULES_DIR = os.path.join(_ONECODE_ROOT, "world_modules")
+
+
+def _resolve_modules_dir(explicit: str | None = None) -> str:
+    """Where the 14 world modules live, in precedence order.
+
+    (a) an explicit constructor argument always wins;
+    (b) env GENESIS_WORLD_MODULES (ops override);
+    (c) the vendored copy inside the app (genesis_onecode/world_modules)
+        — the only one of these that exists on YZ's PC;
+    (d) the legacy VM path, so VM-side development against the live
+        world tree keeps working when no vendored copy is present.
+    """
+    if explicit:
+        return explicit
+    env = os.environ.get("GENESIS_WORLD_MODULES")
+    if env:
+        return env
+    if os.path.isdir(_VENDORED_MODULES_DIR):
+        return _VENDORED_MODULES_DIR
+    return _DEFAULT_MODULES_DIR
 
 # Verified 2026-10-14: the 14 live module directories in genesis_windows/.
 MODULE_NAMES = (
@@ -100,7 +133,7 @@ class ExtendedMind:
     """Guarded adapter to the 14 genesis_windows world modules."""
 
     def __init__(self, modules_dir: str | None = None):
-        self.modules_dir = modules_dir or _DEFAULT_MODULES_DIR
+        self.modules_dir = _resolve_modules_dir(modules_dir)
         self._registry: dict[str, dict] = {}
         self._veins_call = _try_veins_guarded_call()
         self.route = ("veins-guarded" if self._veins_call

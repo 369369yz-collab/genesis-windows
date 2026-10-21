@@ -1,0 +1,538 @@
+{
+ "astra": {
+  "techniques": [
+   {
+    "id": "T-06",
+    "title": "Memory-First Loop (retrieve before acting, store only confirmed)",
+    "what_it_does": "Before attempting a fix, the agent searches a memory of previously confirmed solutions; after a fix passes acceptance tests, it stores the failure→solution→verified-outcome record. Unconfirmed attempts are rejected from storage.",
+    "why_it_works": "It prevents the agent from re-deriving known solutions and, critically, prevents failed attempts from polluting future retrieval.",
+    "genesis_implementation": "Wire the memory module as a pre-step in the lab and hands modules: `recall(situation)` runs before any novel action, and `remember()` is only called with records that carry a passing test/verification artifact. Add a `confirmed: true/false` flag to the memory schema; retrieval ranks confirmed records first.",
+    "raw": "- **What it does:** Before attempting a fix, the agent searches a memory of\n  previously confirmed solutions; after a fix passes acceptance tests, it stores\n  the failure→solution→verified-outcome record. Unconfirmed attempts are rejected\n  from storage.\n- **Why it works:** It prevents the agent from re-deriving known solutions and,\n  critically, prevents failed attempts from polluting future retrieval.\n- **GENESIS implementation:** Wire the memory module as a pre-step in the lab\n  and hands modules: `recall(situation)` runs before any novel action, and\n  `remember()` is only called with records that carry a passing test/verification\n  artifact. Add a `confirmed: true/false` flag to the memory schema; retrieval\n  ranks confirmed records first.",
+    "modules": [
+     "hands",
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Searchable Context Across Sessions (not lossy compaction)",
+    "what_it_does": "Earlier context windows remain searchable, so the agent can recover requirements, test results, and tool outputs that a conventional summary would have dropped.",
+    "why_it_works": "Summarization is lossy by design; for long tasks the lost detail is exactly what later steps need (a test result from 40 steps ago).",
+    "genesis_implementation": "The memory module should keep full session transcripts in a searchable store (embeddings + keyword index) instead of compacting them into summaries. Retrieval queries the raw history. This directly strengthens long Birth-Test-style sessions.",
+    "raw": "- **What it does:** Earlier context windows remain searchable, so the agent can\n  recover requirements, test results, and tool outputs that a conventional\n  summary would have dropped.\n- **Why it works:** Summarization is lossy by design; for long tasks the lost\n  detail is exactly what later steps need (a test result from 40 steps ago).\n- **GENESIS implementation:** The memory module should keep full session\n  transcripts in a searchable store (embeddings + keyword index) instead of\n  compacting them into summaries. Retrieval queries the raw history. This\n  directly strengthens long Birth-Test-style sessions.",
+    "modules": [
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-03",
+    "title": "Memory-Consult-Before-Action",
+    "use_when": "the task resembles something done before.",
+    "pattern": "Force a memory lookup before novel work begins.",
+    "template": " > Before starting, search memory for: <situation keywords>. > If a confirmed solution exists, follow it and note the source. > If none exists, proceed and record what you learn.",
+    "raw": "- **Use when:** the task resembles something done before.\n- **Pattern:** Force a memory lookup before novel work begins.\n- **Template:**\n  > Before starting, search memory for: <situation keywords>.\n  > If a confirmed solution exists, follow it and note the source.\n  > If none exists, proceed and record what you learn.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Confirm-Only Storage",
+    "use_when": "the agent learns from a session.",
+    "pattern": "Only verified outcomes enter long-term memory.",
+    "template": " > Store to memory only records that carry: what failed, what fixed it, and > the passing verification. Reject unconfirmed attempts — failed guesses must > not pollute future retrieval.",
+    "raw": "- **Use when:** the agent learns from a session.\n- **Pattern:** Only verified outcomes enter long-term memory.\n- **Template:**\n  > Store to memory only records that carry: what failed, what fixed it, and\n  > the passing verification. Reject unconfirmed attempts — failed guesses must\n  > not pollute future retrieval.",
+    "modules": [
+     "memory"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "synthesia": {
+  "techniques": [
+   {
+    "id": "T-09",
+    "title": "Living-Document Version Control (edit once, propagate everywhere)",
+    "what_it_does": "Videos are not frozen files — they are living documents. Edit the master and every published copy updates automatically: shared links, website embeds, and LMS-delivered SCORM packages. Version history and analytics (views, completion, per-language comparison) attach to the document, not to a file.",
+    "why_it_works": "It eliminates the version-drift problem that makes video programs expensive: a correction no longer means tracking down and replacing every copy in circulation. This is the defining \"video *program*\" feature versus a \"make a video\" tool.",
+    "genesis_implementation": "Every GENESIS-produced video artifact should carry a master-id; derived copies (embeds, translations, LMS packages) are renders of the master, not independent files. A master edit triggers re-render of dependents with a change log. This is the single most program-grade pattern in the pack — adopt it as a platform-wide artifact convention, not just for avatar video.",
+    "raw": "- **What it does:** Videos are not frozen files — they are living documents.\n  Edit the master and every published copy updates automatically: shared\n  links, website embeds, and LMS-delivered SCORM packages. Version history\n  and analytics (views, completion, per-language comparison) attach to the\n  document, not to a file.\n- **Why it works:** It eliminates the version-drift problem that makes video\n  programs expensive: a correction no longer means tracking down and\n  replacing every copy in circulation. This is the defining \"video *program*\"\n  feature versus a \"make a video\" tool.\n- **GENESIS implementation:** Every GENESIS-produced video artifact should\n  carry a master-id; derived copies (embeds, translations, LMS packages)\n  are renders of the master, not independent files. A master edit triggers\n  re-render of dependents with a change log. This is the single most\n  program-grade pattern in the pack — adopt it as a platform-wide artifact\n  convention, not just for avatar video.",
+    "modules": [
+     "memory",
+     "report",
+     "scheduler"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Glossary-First Naming (declare before translating)",
+    "use_when": "any proper name, product term, or jargon appears in a video that will be localized.",
+    "pattern": "Declare the glossary BEFORE the first render. Every entry states the canonical term, its pronunciation note, and whether it stays untranslated in each target language.",
+    "template": " > Glossary for <project>: > - <term> → keep as-is in <languages> / translate in <languages> > - pronunciation note: <say it like ...> > - brand terms: never translated, never paraphrased. > A video with undeclared names is not ready to translate.",
+    "raw": "- **Use when:** any proper name, product term, or jargon appears in a video\n  that will be localized.\n- **Pattern:** Declare the glossary BEFORE the first render. Every entry\n  states the canonical term, its pronunciation note, and whether it stays\n  untranslated in each target language.\n- **Template:**\n  > Glossary for <project>:\n  > - <term> → keep as-is in <languages> / translate in <languages>\n  > - pronunciation note: <say it like ...>\n  > - brand terms: never translated, never paraphrased.\n  > A video with undeclared names is not ready to translate.",
+    "modules": [
+     "memory",
+     "report"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Global Localization Run (one master, every market)",
+    "body": "1. **LOCK MASTER** — The source-language video is published and version-\n   pinned (T-09). Entry: master render passed W-01. Exit: master id + hash.\n2. **GLOSSARY** — Declare/refresh the term glossary (P-04): names,\n   products, pronunciation notes, per-language keep-vs-translate rules.\n   Exit: glossary versioned; no video with undeclared names proceeds.\n3. **TRANSLATE** — Script translated per target language; hooks and CTAs\n   flagged for native-speaker review (P-07).\n   Exit: translated scripts + review sign-offs for hooks/CTAs.\n4. **RE-RENDER** — Fresh render per language against the translated audio\n   (T-05); dubbed-from-finished-video assets go through the dub pipeline\n   with the line-by-line correction editor (T-06).\n   Exit: per-language render + hash + provenance.\n5. **NATIVE QA** — A native speaker watches one full render per language\n   family. Exit: PASS or fix-list (re-translate, re-render affected scenes).\n6. **SHIP** — All language renders registered as derived copies of the\n   master; a master edit later re-triggers this workflow (T-09).\n\n**Guarded failure modes:** low-resource language quality drop → flagged at\nQA, never auto-shipped; glossary conflict between languages → glossary\nowner resolves before re-render; master edited mid-run → abort the run,\nre-lock the master, restart from stage 2.",
+    "modules": [
+     "memory",
+     "report"
+    ]
+   },
+   {
+    "id": "W-05",
+    "title": "Living Video Maintenance (the program, not the file)",
+    "body": "The workflow that keeps a video library current after publishing.\n\n1. **EDIT** — A detail changes: edit the master text/manifest.\n   Entry: change request with the exact new wording.\n   Exit: master amended with a change-log entry.\n2. **RE-RENDER** — Affected scenes re-render; dependents (translations,\n   dubs, variants) re-triggered per T-09.\n   Exit: new master hash + per-dependent render status.\n3. **AUTO-PROPAGATE** — Shared links, embeds, and LMS packages update to\n   the new version automatically.\n   Exit: propagation receipt per channel (N channels in = N updated).\n4. **ANALYZE** — Built-in analytics: views, completion, per-language and\n   per-version comparison.\n   Exit: a short read-out: what viewers finished, where they dropped.\n5. **ITERATE** — Low-completion segments feed back into a new EDIT cycle.\n   Exit: next change request, or \"holding — metrics healthy.\"\n\n**Guarded failure modes:** propagation failure on one channel → the\nchannel is retried, then escalated; the master version is never rolled\nback to hide it; a revoked identity (P-10) triggers re-render or\nretirement of affected videos across all channels before the next\npropagation cycle.\n\n---\n\n## Cross-workflow rules\n\n- **No orphan renders:** every output references its master id. A render\n  without a master is not shippable (composition rule, Master-Script-First).\n- **Arithmetic honesty:** batch and localization runs reconcile counts\n  (submitted = rendered + failed-with-reason); propagation reconciles\n  channels (in = updated). Unreconciled numbers never reach the father.\n- **Independent re-review:** any capability the workflow newly depends on\n  (a new engine version, a new language pair) passes our merciless review\n  (LAW-050) before production use — the ARC-AGI-3 lesson.\n- **Voice guardrail:** workflows W-01/W-02/W-03 include voice-synthesis\n  stages as GENESIS product capability. The 369 publish path runs the same\n  workflows with voice stages disabled — the NO AI VOICE LAW is enforced\n  at the gate, not by trust.",
+    "modules": [
+     "memory",
+     "report",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "higgsfield": {
+  "techniques": [
+   {
+    "id": "T-03",
+    "title": "Soul ID: Train-Once Identity Lock",
+    "what_it_does": "A persona is trained once from a set of reference photos (~20 consistent portraits, ideally multi-angle: front, side, 3/4 via a composite sheet) into a persistent identity profile. Every later generation references that profile by name; the same face appears across shots, models, and sessions without re-uploading references.",
+    "why_it_works": "Per-shot reference images drift over a long series (references of references). A trained profile is a stable embedding: one source of truth for identity, versioned once, consumed everywhere.",
+    "genesis_implementation": "For the station/eyes modules and the 369 content library: build an `identity_profiles/` store — a named identity = one folder with canonical reference images + a fixed descriptor block (face, build, wardrobe, palette HEXes). Any asset pipeline that reuses a persona loads the profile by ID; regenerating the identity requires a versioned change, never a silent drift. Keep a profile-change log so a face that \"changes\" is always traceable to a deliberate edit.",
+    "raw": "- **What it does:** A persona is trained once from a set of reference photos\n  (~20 consistent portraits, ideally multi-angle: front, side, 3/4 via a\n  composite sheet) into a persistent identity profile. Every later generation\n  references that profile by name; the same face appears across shots, models,\n  and sessions without re-uploading references.\n- **Why it works:** Per-shot reference images drift over a long series\n  (references of references). A trained profile is a stable embedding: one\n  source of truth for identity, versioned once, consumed everywhere.\n- **GENESIS implementation:** For the station/eyes modules and the 369 content\n  library: build an `identity_profiles/` store — a named identity = one folder\n  with canonical reference images + a fixed descriptor block (face, build,\n  wardrobe, palette HEXes). Any asset pipeline that reuses a persona loads the\n  profile by ID; regenerating the identity requires a versioned change, never\n  a silent drift. Keep a profile-change log so a face that \"changes\" is always\n  traceable to a deliberate edit.",
+    "modules": [
+     "memory",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "flow": {
+  "techniques": [
+   {
+    "id": "T-06",
+    "title": "Flow TV: Exact-Prompt Public Gallery as a Learning Loop",
+    "what_it_does": "A built-in showcase of clips where viewers can see the exact prompts and techniques used for each piece — creators learn by copying real working prompts, not by reading tutorials.",
+    "why_it_works": "Prompt knowledge is tacit; the fastest transfer is artifact + recipe together. The gallery converts every good generation into a teaching example for the whole user base.",
+    "genesis_implementation": "Keep a permanent `prompt_library` in memory where every approved asset stores its full prompt, model, settings, and result thumbnail. The 369 prompt engineers must consult it before writing new prompts (memory-first, T-06 of Astra applies). Reject \"from-scratch\" prompts for solved cases; force retrieval first. This is how the team stops re-discovering what already works.",
+    "raw": "- **What it does:** A built-in showcase of clips where viewers can see the\n  exact prompts and techniques used for each piece — creators learn by\n  copying real working prompts, not by reading tutorials.\n- **Why it works:** Prompt knowledge is tacit; the fastest transfer is\n  artifact + recipe together. The gallery converts every good generation\n  into a teaching example for the whole user base.\n- **GENESIS implementation:** Keep a permanent `prompt_library` in memory\n  where every approved asset stores its full prompt, model, settings, and\n  result thumbnail. The 369 prompt engineers must consult it before writing\n  new prompts (memory-first, T-06 of Astra applies). Reject \"from-scratch\"\n  prompts for solved cases; force retrieval first. This is how the team\n  stops re-discovering what already works.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Asset Collections: Named Ingredient Library (one per project)",
+    "what_it_does": "Built-in asset management — catalog, reuse, and refine ingredients and prompts in searchable collections per project; the Flow Agent can rename files, organize media into collections, and archive unused assets.",
+    "why_it_works": "AI production multiplies assets; without a library the team regenerates what it already had and loses consistency references.",
+    "genesis_implementation": "Every video project gets a named collection: ingredients (locked references), approved stills, clip versions, prompts used. The agent housekeeping rule: unused assets archived, approved assets never deleted mid-project. This maps directly to the 369 team's SAMPLE GROUP NAMING LAW — every asset set carries a clear, unique name.",
+    "raw": "- **What it does:** Built-in asset management — catalog, reuse, and refine\n  ingredients and prompts in searchable collections per project; the Flow\n  Agent can rename files, organize media into collections, and archive\n  unused assets.\n- **Why it works:** AI production multiplies assets; without a library the\n  team regenerates what it already had and loses consistency references.\n- **GENESIS implementation:** Every video project gets a named collection:\n  ingredients (locked references), approved stills, clip versions, prompts\n  used. The agent housekeeping rule: unused assets archived, approved\n  assets never deleted mid-project. This maps directly to the 369 team's\n  SAMPLE GROUP NAMING LAW — every asset set carries a clear, unique name.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-03",
+    "title": "Reference-Lock Block (ingredients header)",
+    "use_when": "a recurring character, object, or style appears in the shot.",
+    "pattern": "Name the locked assets up front; never re-describe them in prose.",
+    "template": " > INGREDIENTS: [subject_ref_v2] [style_moodboard_urban-night] > SUBJECT: the reference subject, same face, same jacket > The rest of the prompt carries only what CHANGES in this shot.",
+    "raw": "- **Use when:** a recurring character, object, or style appears in the shot.\n- **Pattern:** Name the locked assets up front; never re-describe them in prose.\n- **Template:**\n  > INGREDIENTS: [subject_ref_v2] [style_moodboard_urban-night]\n  > SUBJECT: the reference subject, same face, same jacket\n  > The rest of the prompt carries only what CHANGES in this shot.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Frame-Lock Sandwich (start/end anchors)",
+    "use_when": "you know exactly how the shot should begin and end.",
+    "pattern": "Lock the frames; let the model fill only the middle.",
+    "template": " > START FRAME: [still_asset_01] > END FRAME: [still_asset_02] > TRANSITION: <what happens between — motion, lighting shift, camera> > Rule: compose and approve both stills before spending any video budget.",
+    "raw": "- **Use when:** you know exactly how the shot should begin and end.\n- **Pattern:** Lock the frames; let the model fill only the middle.\n- **Template:**\n  > START FRAME: [still_asset_01]\n  > END FRAME: [still_asset_02]\n  > TRANSITION: <what happens between — motion, lighting shift, camera>\n  > Rule: compose and approve both stills before spending any video budget.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "P-09",
+    "title": "Anti-Generic Style Lock (named references, never adjectives)",
+    "use_when": "the brief calls for a distinctive look.",
+    "pattern": "Style is specified by named references and a locked moodboard, never by adjectives like \"cinematic\" or \"moody.\"",
+    "template": " > STYLE: moodboard [locked_moodboard_v1] + grade: <teal shadows, crushed > blacks, warm practical highlights> + lens: <anamorphic, oval bokeh>. > BANNED: \"cinematic\", \"moody\", \"aesthetic\", \"cool\" — these produce average. > (This pattern directly serves LAW-149: generic adjectives are the engine > of AI slop. Named references produce a human-directed look.)",
+    "raw": "- **Use when:** the brief calls for a distinctive look.\n- **Pattern:** Style is specified by named references and a locked moodboard,\n  never by adjectives like \"cinematic\" or \"moody.\"\n- **Template:**\n  > STYLE: moodboard [locked_moodboard_v1] + grade: <teal shadows, crushed\n  > blacks, warm practical highlights> + lens: <anamorphic, oval bokeh>.\n  > BANNED: \"cinematic\", \"moody\", \"aesthetic\", \"cool\" — these produce average.\n  > (This pattern directly serves LAW-149: generic adjectives are the engine\n  > of AI slop. Named references produce a human-directed look.)",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "P-10",
+    "title": "Variation-Set Pattern (one asset × N looks)",
+    "use_when": "comparing visual directions before committing.",
+    "pattern": "Generate the SAME composition under N lighting/mood variants; pick one as the lock; archive the rest.",
+    "template": " > BASE: [composed still, approved] > VARIANTS: <N=5–8: lighting/mood/grrade each stated as a named look> > DECISION: winner → INGREDIENT for the scene. Losers → archived, never > deleted (they train future taste). --- ## Composition rule A single shot is **P-01 (five layers) + P-03 (reference lock) + P-07 (camera token)**. Add **P-05 (audio)** when sound matters, **P-04 (frame lock)** when composition is pre-decided. A scene is **P-06 (coverage)** sequenced in SceneBuilder; longer than ~32s uses **P-08 (extend chain)** with QC checkpoints. A distinctive look is **P-10 (variation set) → winner → P-09 (style lock)**; locked looks go into the ingredient library and the team's prompt library (T-06: Flow TV pattern). A revision is a **masked/conversational fix on the artifact** (T-09, T-12) — re-roll the full shot only with a recorded reason. ## Sources Distilled from Google's public Veo prompting guidance and independent community guides (skill documents, review sites, filmmaker workflow coverage). All wording is our own.",
+    "raw": "- **Use when:** comparing visual directions before committing.\n- **Pattern:** Generate the SAME composition under N lighting/mood variants;\n  pick one as the lock; archive the rest.\n- **Template:**\n  > BASE: [composed still, approved]\n  > VARIANTS: <N=5–8: lighting/mood/grrade each stated as a named look>\n  > DECISION: winner → INGREDIENT for the scene. Losers → archived, never\n  > deleted (they train future taste).\n\n---\n\n## Composition rule\n\nA single shot is **P-01 (five layers) + P-03 (reference lock) + P-07\n(camera token)**. Add **P-05 (audio)** when sound matters, **P-04\n(frame lock)** when composition is pre-decided.\n\nA scene is **P-06 (coverage)** sequenced in SceneBuilder; longer than\n~32s uses **P-08 (extend chain)** with QC checkpoints.\n\nA distinctive look is **P-10 (variation set) → winner → P-09 (style\nlock)**; locked looks go into the ingredient library and the team's\nprompt library (T-06: Flow TV pattern).\n\nA revision is a **masked/conversational fix on the artifact** (T-09,\nT-12) — re-roll the full shot only with a recorded reason.\n\n## Sources\n\nDistilled from Google's public Veo prompting guidance and independent\ncommunity guides (skill documents, review sites, filmmaker workflow\ncoverage). All wording is our own.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-04",
+    "title": "Style-Lock Workflow (moodboard → locked look)",
+    "body": "For establishing a repeatable visual identity before any production (T-08,\nP-09/P-10; the 369 page-DNA process formalized).\n\n1. **COLLECT** — 3–6 references: own past work, licensed/official sources,\n   never copyrighted material. Exit: reference set with sources noted.\n2. **COLLAG**E — Assemble the moodboard: palette, texture, lens character,\n   grade direction. Exit: one board the whole team can see.\n3. **VARIANTS** — Render the same base composition under 5–8 named looks.\n   Exit: side-by-side set.\n4. **CHOOSE** — Human (or Agent YZ) picks one winner; the choice and its\n   reason are recorded. Exit: one locked look with a name and a version.\n5. **INGREDIENT-IZE** — The locked look becomes a style ingredient attached\n   to every shot of the project. Exit: no shot renders without it.\n\nEntry: a project needing a distinctive look. Exit: locked style\ningredient, versioned. Failure mode guarded: adjective-style (\"cinematic\")\n— blocked at step 2; the board must be visual, never verbal. Directly\nserves LAW-149: a locked human-directed look is the opposite of AI slop.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "artflow": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Train-Once Identity Tokens (the \"Actor\" model)",
+    "what_it_does": "The user uploads 10–20 clear face photos; a 10–30 minute training pass distills them into a persistent identity token (\"Actor\"). Every later generation references that token, so the same face appears across portraits, scenes, templates, and video frames.",
+    "why_it_works": "Prompt-engineering the same face description every time drifts — each generation is a new roll of the dice. A trained identity token converts identity from a hope into an input, making consistency a property of the system rather than luck.",
+    "genesis_implementation": "[FEEDS-369-LIBRARY] Build an identity-registry pattern in the lab module: a reference asset (photo set or approved key art) is embedded once; every subsequent generation carries that embedding as a conditioning input. Attach a likeness-QC gate: each output is compared to the reference embedding (cosine-similarity threshold) and rejected below it. **LAW-149 guard:** identity-locking must never freeze a stale look — the registry supports versioned identities, and every publish still passes the anti-slop review gate (no glossy-generic faces).",
+    "raw": "- **What it does:** The user uploads 10–20 clear face photos; a 10–30 minute\n  training pass distills them into a persistent identity token (\"Actor\"). Every\n  later generation references that token, so the same face appears across\n  portraits, scenes, templates, and video frames.\n- **Why it works:** Prompt-engineering the same face description every time\n  drifts — each generation is a new roll of the dice. A trained identity token\n  converts identity from a hope into an input, making consistency a property of\n  the system rather than luck.\n- **GENESIS implementation:** [FEEDS-369-LIBRARY] Build an identity-registry\n  pattern in the lab module: a reference asset (photo set or approved key art)\n  is embedded once; every subsequent generation carries that embedding as a\n  conditioning input. Attach a likeness-QC gate: each output is compared to the\n  reference embedding (cosine-similarity threshold) and rejected below it.\n  **LAW-149 guard:** identity-locking must never freeze a stale look — the\n  registry supports versioned identities, and every publish still passes the\n  anti-slop review gate (no glossy-generic faces).",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Multi-Scene Identity Continuity",
+    "what_it_does": "The same trained Actor persists across storybook scenes and across video frames — the platform's headline value proposition is that the character does not morph between scene 3 and scene 7.",
+    "why_it_works": "Narrative coherence is what separates \"a set of images\" from \"a story.\" Continuity is enforced by the shared identity token (T-01), not by re-describing the character each time.",
+    "genesis_implementation": "[FEEDS-369-LIBRARY] Every multi-piece series (carousel, story arc, reel series) carries a continuity manifest: locked subject references, palette, type treatment, and footer. Each new piece is generated AGAINST the manifest and continuity-checked before acceptance — the machine version of the PAGE-COHERENCE law. A piece that breaks the manifest fails closed.",
+    "raw": "- **What it does:** The same trained Actor persists across storybook scenes and\n  across video frames — the platform's headline value proposition is that the\n  character does not morph between scene 3 and scene 7.\n- **Why it works:** Narrative coherence is what separates \"a set of images\"\n  from \"a story.\" Continuity is enforced by the shared identity token (T-01),\n  not by re-describing the character each time.\n- **GENESIS implementation:** [FEEDS-369-LIBRARY] Every multi-piece series\n  (carousel, story arc, reel series) carries a continuity manifest: locked\n  subject references, palette, type treatment, and footer. Each new piece is\n  generated AGAINST the manifest and continuity-checked before acceptance —\n  the machine version of the PAGE-COHERENCE law. A piece that breaks the\n  manifest fails closed.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Identity Onboarding (train once, reuse forever)",
+    "body": "- **Entry criteria:** 10–20 clear face photos (single subject, varied angles,\n  good light); written consent for likeness use on file; target use declared\n  (portrait series / video / template fills).\n- **Steps:**\n  1. Validate photo set (face detectable in all, no second person, mouth\n     visible in ≥3).\n  2. Train identity token (10–30 min class of job; tracked as a scheduled job\n     with progress events).\n  3. Verification pass: generate 4 test portraits across 2 styles; likeness\n     score vs reference embedding ≥ threshold on all 4.\n  4. Register identity: store token id, reference embedding, consent record,\n     version number.\n- **Exit criteria:** identity token registered with 4/4 likeness tests passing;\n  consent record attached; cost logged.\n- **Guarded failure modes:**\n  - Photo set fails validation → return the failing photos with reasons;\n    NEVER train on a weak set (a weak identity poisons everything downstream).\n  - Likeness test < threshold → retrain with augmented set (more angles) or\n    reject identity; never ship a \"close enough\" token.\n  - Consent missing → job blocked at the gate; no override path.",
+    "modules": [
+     "lab",
+     "memory",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "chatgpt-images": {
+  "techniques": [
+   {
+    "id": "T-02",
+    "title": "Conversational Multi-Turn Edit Refinement",
+    "what_it_does": "Every generation becomes the input to the next. The user issues small edits conversationally (\"move the product slightly right, keep everything else unchanged\") and the system preserves prior decisions instead of regenerating from a blank slate.",
+    "why_it_works": "Real creative work is iterative: fix one thing, keep the rest. Stateless regeneration re-rolls everything, which breaks one fixed thing for every thing it fixes. Context carryover makes the workflow feel like working with a human artist across rounds.",
+    "genesis_implementation": "Design our image pipelines as sessions, not one-shot calls. Keep (prompt history, accepted image, change log) per asset in a work record; each new call passes the latest accepted image back in plus the delta instruction. Never re-generate a whole asset when only one element changed.",
+    "raw": "- **What it does:** Every generation becomes the input to the next. The user\n  issues small edits conversationally (\"move the product slightly right, keep\n  everything else unchanged\") and the system preserves prior decisions instead\n  of regenerating from a blank slate.\n- **Why it works:** Real creative work is iterative: fix one thing, keep the\n  rest. Stateless regeneration re-rolls everything, which breaks one fixed\n  thing for every thing it fixes. Context carryover makes the workflow feel\n  like working with a human artist across rounds.\n- **GENESIS implementation:** Design our image pipelines as sessions, not\n  one-shot calls. Keep (prompt history, accepted image, change log) per asset\n  in a work record; each new call passes the latest accepted image back in\n  plus the delta instruction. Never re-generate a whole asset when only one\n  element changed.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Verbatim Identity Anchors (character/object consistency)",
+    "what_it_does": "To keep a character or object consistent across many generations, its full description is repeated EXACTLY — same words, same order — in every prompt of the series. Paraphrasing introduces drift; verbatim repetition locks identity. Practitioners also generate a single \"character reference sheet\" (front/side/back, expressions, palette) first and reuse it as the visual anchor for every downstream image.",
+    "why_it_works": "The model binds identity to repeated token patterns. Any wording change is read as a possible design change. A dedicated reference sheet compresses identity, wardrobe, and palette into one authoritative visual the model can match against.",
+    "genesis_implementation": "For any multi-image series (campaign sets, carousels), store a LOCKED identity block per recurring element (character/object/location/style) and have code inject it verbatim into every prompt — never re-typed by a human per image. Generate the anchor sheet once, keep it versioned, pass it as an input image to every item in the series.",
+    "raw": "- **What it does:** To keep a character or object consistent across many\n  generations, its full description is repeated EXACTLY — same words, same\n  order — in every prompt of the series. Paraphrasing introduces drift;\n  verbatim repetition locks identity. Practitioners also generate a\n  single \"character reference sheet\" (front/side/back, expressions, palette)\n  first and reuse it as the visual anchor for every downstream image.\n- **Why it works:** The model binds identity to repeated token patterns. Any\n  wording change is read as a possible design change. A dedicated reference\n  sheet compresses identity, wardrobe, and palette into one authoritative\n  visual the model can match against.\n- **GENESIS implementation:** For any multi-image series (campaign sets,\n  carousels), store a LOCKED identity block per recurring element\n  (character/object/location/style) and have code inject it verbatim into\n  every prompt — never re-typed by a human per image. Generate the anchor\n  sheet once, keep it versioned, pass it as an input image to every item in\n  the series.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "T-04",
+    "title": "Role-Labeled Reference Images (style anchoring)",
+    "what_it_does": "References are uploaded alongside the prompt and labeled by role: one image is the character/identity reference, one is the material/style reference, and prior finished pieces anchor continuity. The model reads each image for the purpose it was assigned, not as a single blended mood board.",
+    "why_it_works": "Unlabeled references get averaged together, which washes out what made each one useful. Roles tell the model which reference owns which decision (this one defines the face, that one defines the paper texture), so style lives in the references rather than in prompt prose.",
+    "genesis_implementation": "Our image-call builder should accept a structured reference list with explicit roles (identity / style / composition / prior_output) and emit matching prompt text that names each role. Store reference sets per project like a material library, not loose files.",
+    "raw": "- **What it does:** References are uploaded alongside the prompt and labeled\n  by role: one image is the character/identity reference, one is the\n  material/style reference, and prior finished pieces anchor continuity.\n  The model reads each image for the purpose it was assigned, not as a\n  single blended mood board.\n- **Why it works:** Unlabeled references get averaged together, which washes\n  out what made each one useful. Roles tell the model which reference owns\n  which decision (this one defines the face, that one defines the paper\n  texture), so style lives in the references rather than in prompt prose.\n- **GENESIS implementation:** Our image-call builder should accept a\n  structured reference list with explicit roles\n  (identity / style / composition / prior_output) and emit matching prompt\n  text that names each role. Store reference sets per project like a\n  material library, not loose files.",
+    "modules": [
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-03",
+    "title": "Verbatim Consistency Block",
+    "use_when": "a character, object, logo treatment, or style must survive across multiple generations (series, campaign, multi-panel).",
+    "pattern": "Write one locked description block and inject it character-for-character into every prompt of the series. Never retype or paraphrase it per image.",
+    "template": " > CONSISTENCY BLOCK (locked, injected verbatim): > Same [outfit — list every visible element]. > Same [face/features — list every defining trait]. > Same [proportions and palette — list exact colors]. > Same [pose family / personality]. > Hard locks: do not redesign; appearance must remain unchanged; no new > accessories; no text drift. > If drift is detected on review: regenerate with the same block unchanged — > do not \"improve\" the wording.",
+    "raw": "- **Use when:** a character, object, logo treatment, or style must survive\n  across multiple generations (series, campaign, multi-panel).\n- **Pattern:** Write one locked description block and inject it\n  character-for-character into every prompt of the series. Never retype or\n  paraphrase it per image.\n- **Template:**\n  > CONSISTENCY BLOCK (locked, injected verbatim):\n  > Same [outfit — list every visible element].\n  > Same [face/features — list every defining trait].\n  > Same [proportions and palette — list exact colors].\n  > Same [pose family / personality].\n  > Hard locks: do not redesign; appearance must remain unchanged; no new\n  > accessories; no text drift.\n  > If drift is detected on review: regenerate with the same block unchanged —\n  > do not \"improve\" the wording.",
+    "modules": [
+     "lab",
+     "memory"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-02",
+    "title": "Edit/Iterate Loop (multi-turn refinement)",
+    "body": "For fixing or evolving an existing image without regenerating it.\n\n1. **BASELINE** — The accepted image is stored as the session base with its\n   full brief. Entry: a base image exists and is accepted. Exit: base is\n   immutable for the session (all edits are deltas against it).\n2. **DELTA** — Issue ONE targeted change per round (P-08) with a preserve\n   list (P-09): what survives is named before what changes. Entry: the\n   previous round's output is reviewed. Exit: one delta instruction,\n   max 2 sentences.\n3. **APPLY** — Run the edit at HIGH input fidelity (T-06) when preserving\n   identity/product; generate a mask (T-05) when the change is regional.\n   Exit: new output image.\n4. **VERIFY** — Compare output against base: is the delta applied AND are\n   all preserved elements intact? Exit: PASS (becomes the new baseline) or\n   FAIL with the specific regression named.\n5. **CIRCUIT BREAKER** — If 3 consecutive rounds fail, stop iterating:\n   return to BRIEF with a rewritten brief (W-01 step 1) instead of a 4th\n   edit round. Exit: either a passing baseline or an escalated re-brief.\n   Never run more than 5 edit rounds on one base — diminishing returns are\n   a known wall (regeneration drift).\n\nFailure modes guarded: fix-one-break-one cycles (VERIFY checks preserves\nevery round), infinite iteration (circuit breaker at 3), drift across\nrounds (baseline is always the last PASS, never the last attempt).",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Series Consistency (campaign / carousel / multi-panel set)",
+    "body": "For N images that must read as one family.\n\n1. **DEFINE** — Lock the family identity: write the P-03 consistency block\n   for every recurring element (character, object, location, palette,\n   typography treatment) and store it as the single source of truth.\n   Entry: the series concept is approved. Exit: one locked identity block,\n   versioned.\n2. **ANCHOR SHEET** — Generate the reference sheet first (T-03): for a\n   character, front/side/back + expressions + palette; for a style, the\n   master composition at the series dimensions. Exit: the anchor sheet\n   passes QC and is the visual law of the series.\n3. **PER-ITEM BRIEFS** — Each item gets a P-01 brief where the Subject slot\n   is the identity block injected VERBATIM (T-03, T-10) plus the item's\n   unique Scene. Exit: N briefs, all sharing identical Subject text.\n4. **GENERATE** — Render items sequentially, each with the anchor sheet\n   passed as a reference image (T-04). Exit: N candidate images.\n5. **FAMILY REVIEW** — Review all N side by side: same face, same outfit,\n   same palette, same typography treatment across the set — not just each\n   image against its own brief. Exit: PASS for all, or named items return\n   to GENERATE with the identical (unchanged) brief.\n6. **SEAL** — Version the set as one deliverable; store the identity block\n   and anchor sheet with it for future extensions of the series.\n\nFailure modes guarded: paraphrase drift (verbatim injection is code, not\ntyping), single-image blindness (family review catches cross-item\ninconsistency), style averaging (role-labeled references, not mood boards).",
+    "modules": [
+     "eyes",
+     "hands",
+     "memory"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-07",
+    "title": "Just-in-Time Retrieval (identifiers, not dumps)",
+    "what_it_does": "Agents hold lightweight identifiers — file paths, search queries, URLs — and load the actual content through tools at runtime, instead of pre-loading everything up front. A small upfront brief (project conventions file) plus on-demand fetch via search/grep beats both extremes.",
+    "why_it_works": "It mirrors how humans work (bookmarks and file systems, not memorized corpora), avoids stale pre-built indexes, and keeps the context window filled with high-signal tokens. Runtime exploration costs some latency; careful tool design keeps it bounded.",
+    "genesis_implementation": "The hands file-access layer moves to identifier-based fetch: memory stores pointers with freshness metadata, and content is loaded on demand. Never paste an entire codebase into a worker's brief; pass paths and let the worker grep.",
+    "raw": "- **What it does:** Agents hold lightweight identifiers — file paths, search\n  queries, URLs — and load the actual content through tools at runtime, instead\n  of pre-loading everything up front. A small upfront brief (project conventions\n  file) plus on-demand fetch via search/grep beats both extremes.\n- **Why it works:** It mirrors how humans work (bookmarks and file systems, not\n  memorized corpora), avoids stale pre-built indexes, and keeps the context\n  window filled with high-signal tokens. Runtime exploration costs some latency;\n  careful tool design keeps it bounded.\n- **GENESIS implementation:** The hands file-access layer moves to\n  identifier-based fetch: memory stores pointers with freshness metadata, and\n  content is loaded on demand. Never paste an entire codebase into a worker's\n  brief; pass paths and let the worker grep.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Compaction With Preserved Decisions (context reset without amnesia)",
+    "what_it_does": "As the context window nears its limit, the transcript is summarized into a smaller representation and the session restarts from it. The summary is tuned to preserve architectural decisions, unresolved bugs, and implementation details; redundant tool outputs are dropped. The lightest mechanical form — clearing old tool-result bodies while keeping the tool-use record — is offered as a platform feature.",
+    "why_it_works": "Performance degrades as the window fills (attention dilution — \"context rot\"), so infinite accumulation is not an option; but naive summarization loses exactly the details later steps need. Preserving decisions + open bugs + recent file list keeps the restarted session functional.",
+    "genesis_implementation": "The scheduler triggers compaction at a configured threshold with a fixed summary template: goal, architectural decisions taken, unresolved bugs, implementation details, last verified state, recent files. Tool-result clearing runs continuously as the lightweight tier. Tune the template for high recall first, then improve precision.",
+    "raw": "- **What it does:** As the context window nears its limit, the transcript is\n  summarized into a smaller representation and the session restarts from it.\n  The summary is tuned to preserve architectural decisions, unresolved bugs,\n  and implementation details; redundant tool outputs are dropped. The lightest\n  mechanical form — clearing old tool-result bodies while keeping the tool-use\n  record — is offered as a platform feature.\n- **Why it works:** Performance degrades as the window fills (attention\n  dilution — \"context rot\"), so infinite accumulation is not an option; but\n  naive summarization loses exactly the details later steps need. Preserving\n  decisions + open bugs + recent file list keeps the restarted session\n  functional.\n- **GENESIS implementation:** The scheduler triggers compaction at a configured\n  threshold with a fixed summary template: goal, architectural decisions taken,\n  unresolved bugs, implementation details, last verified state, recent files.\n  Tool-result clearing runs continuously as the lightweight tier. Tune the\n  template for high recall first, then improve precision.",
+    "modules": [
+     "memory",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Structured Note-Taking / External State Files",
+    "what_it_does": "The agent writes state outside the context window — notes files, to-do lists, and a feature checklist file with per-feature description, verification steps, and a pass/fail flag. After context resets, the agent reads its notes and continues. The checklist is kept in a structured format (e.g. JSON) precisely so the model is less likely to rewrite it inappropriately, and it is treated as unacceptable to delete or edit tests/features to make them pass.",
+    "why_it_works": "External files survive context resets; the checklist makes \"done\" mechanically checkable instead of a feeling; the format resists the model's urge to quietly redefine success.",
+    "genesis_implementation": "Scheduler job records keep external progress files; the lab keeps per-task notes; the memory module adopts the checklist shape for long jobs. Verification steps in the file are the acceptance gate — no checklist item flips to pass without its evidence.",
+    "raw": "- **What it does:** The agent writes state outside the context window — notes\n  files, to-do lists, and a feature checklist file with per-feature description,\n  verification steps, and a pass/fail flag. After context resets, the agent\n  reads its notes and continues. The checklist is kept in a structured format\n  (e.g. JSON) precisely so the model is less likely to rewrite it\n  inappropriately, and it is treated as unacceptable to delete or edit\n  tests/features to make them pass.\n- **Why it works:** External files survive context resets; the checklist makes\n  \"done\" mechanically checkable instead of a feeling; the format resists the\n  model's urge to quietly redefine success.\n- **GENESIS implementation:** Scheduler job records keep external progress\n  files; the lab keeps per-task notes; the memory module adopts the checklist\n  shape for long jobs. Verification steps in the file are the acceptance gate —\n  no checklist item flips to pass without its evidence.",
+    "modules": [
+     "lab",
+     "memory",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-05",
+    "title": "Context Maintenance Cycle (keep the window high-signal)",
+    "body": "Runs continuously inside any long job; owned by the scheduler.\n\n1. **CLEAR** — Continuously replace old tool-result bodies with placeholders;\n   keep the tool-use record (lightweight, mechanical, zero inference).\n   Exit: dominated-by-recallable-output bloat removed.\n2. **NOTE** — Agent writes decisions, open bugs, and implementation details to\n   the external notes/progress file as they happen (T-09).\n   Exit: state exists outside the window.\n3. **COMPACT** — At the token threshold, summarize and restart from the\n   summary: goal, decisions, unresolved bugs, details, last verified state,\n   recent files (T-08). Tune for recall first.\n   Exit: restarted session, decisions and open bugs intact.\n4. **VERIFY-CONTINUITY** — After compaction, the agent restates the goal and\n   the next step from the summary; mismatch with the pre-compaction plan is a\n   defect to fix before continuing.\n   Exit: continuity confirmed, or summary corrected.\n\n---\n\n## Failure modes each workflow guards against\n\n| Workflow | Primary failure mode | Guard |\n|---|---|---|\n| W-01 | Stale plan executed to failure; unverified steps | Interleaved reflection (T-02) + plan gate (T-10) + proof-required verify (P-08) |\n| W-02 | Vendor hype or single-source claims treated as fact | Cross-check stage; confidence-graded findings table |\n| W-03 | Author reviewing own work (blind to own flaws) | Clean-window reviewer; external Kiro/9Router gate in parallel |\n| W-04 | Session-boundary amnesia; drifting \"done\" | Initializer artifacts; checklist gating; commit-per-increment |\n| W-05 | Context rot (silent degradation as window fills) | Mechanical clearing → structured notes → recall-tuned compaction |\n\n## Sources\n\nPatterns reverse-engineered from public descriptions of Claude's agent\nbehavior, Anthropic's engineering posts on context engineering and\nlong-running-agent harnesses, and practitioner workflow guides. All designs\nare our own.",
+    "modules": [
+     "memory",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "replit-agent": {
+  "techniques": [
+   {
+    "id": "T-11",
+    "title": "Living Instruction Blob (replit.md, auto-read and self-updated)",
+    "what_it_does": "A single markdown file in the project root carries the agent's persistent instructions, conventions, and durable facts. It is automatically read at session start and the agent itself rewrites it as it learns (task conventions, discovered facts, constraints).",
+    "why_it_works": "It externalizes working memory into versioned text. The agent doesn't need perfect context windows if its durable knowledge lives in a file it always re-reads, and self-updating means lessons survive across sessions without a human curating them.",
+    "genesis_implementation": "Adopt per-project `GENESIS.md` (or per-module) blobs that the hands agent reads at job start and appends confirmed learnings to at job end — a file-based counterpart to the memory module, auditable by humans and diffable in git. The write path is gated: only verified outcomes (Astra T-06 `confirmed: true`) may be recorded.",
+    "raw": "- **What it does:** A single markdown file in the project root carries the\n  agent's persistent instructions, conventions, and durable facts. It is\n  automatically read at session start and the agent itself rewrites it as it\n  learns (task conventions, discovered facts, constraints).\n- **Why it works:** It externalizes working memory into versioned text. The\n  agent doesn't need perfect context windows if its durable knowledge lives\n  in a file it always re-reads, and self-updating means lessons survive\n  across sessions without a human curating them.\n- **GENESIS implementation:** Adopt per-project `GENESIS.md` (or per-module)\n  blobs that the hands agent reads at job start and appends confirmed\n  learnings to at job end — a file-based counterpart to the memory module,\n  auditable by humans and diffable in git. The write path is gated: only\n  verified outcomes (Astra T-06 `confirmed: true`) may be recorded.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "chatgpt": {
+  "techniques": [
+   {
+    "id": "T-03",
+    "title": "Project-Scoped Context (Projects)",
+    "what_it_does": "Chats are grouped into Projects; each project carries its own instructions, persistent files, and bounded memory. Everything within inherits the project's context automatically; cross-project contamination is prevented by scope.",
+    "why_it_works": "A single global prompt cannot hold a developer's stack, a marketer's voice, and a lawyer's caution at once. Scoping gives N narrow specialists instead of one muddy generalist, and files uploaded once stay available across all chats in the project.",
+    "genesis_implementation": "Give the memory module project-level namespaces: `memory/<project>/instructions.md`, `memory/<project>/files/`, `memory/<project>/context/`. Jobs launched under a project inherit its namespace. Add a scope guard: a job must name its project or explicitly choose global; retrieval never crosses scopes silently.",
+    "raw": "- **What it does:** Chats are grouped into Projects; each project carries its\n  own instructions, persistent files, and bounded memory. Everything within\n  inherits the project's context automatically; cross-project contamination\n  is prevented by scope.\n- **Why it works:** A single global prompt cannot hold a developer's stack,\n  a marketer's voice, and a lawyer's caution at once. Scoping gives N narrow\n  specialists instead of one muddy generalist, and files uploaded once stay\n  available across all chats in the project.\n- **GENESIS implementation:** Give the memory module project-level namespaces:\n  `memory/<project>/instructions.md`, `memory/<project>/files/`,\n  `memory/<project>/context/`. Jobs launched under a project inherit its\n  namespace. Add a scope guard: a job must name its project or explicitly\n  choose global; retrieval never crosses scopes silently.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Two-Layer Memory (saved + implicit)",
+    "what_it_does": "Memory runs as two linked layers: saved memories (explicit, user-viewable, individually editable/deletable facts) and chat-history reference (implicit: the assistant draws on past conversations without a visible list). Toggles control them independently (turning off the first also turns off the second). A Temporary Chat mode reads and writes neither.",
+    "why_it_works": "Explicit memories give transparency and user control; the implicit layer gives coverage (what the user never thought to say \"remember\"). Independent toggles respect that users want different levels of amnesia for different purposes.",
+    "genesis_implementation": "The memory module should ship both layers: `explicit` records (source: user command or confirmed event, user-visible, CRUD API) and `implicit` recall (embedding search over full session transcripts). Per-project toggles for each layer (T-03). A \"temporary session\" flag that disables both read and write — default-off so privacy mode is a deliberate, logged choice.",
+    "raw": "- **What it does:** Memory runs as two linked layers: saved memories (explicit,\n  user-viewable, individually editable/deletable facts) and chat-history\n  reference (implicit: the assistant draws on past conversations without a\n  visible list). Toggles control them independently (turning off the first\n  also turns off the second). A Temporary Chat mode reads and writes neither.\n- **Why it works:** Explicit memories give transparency and user control;\n  the implicit layer gives coverage (what the user never thought to say\n  \"remember\"). Independent toggles respect that users want different levels\n  of amnesia for different purposes.\n- **GENESIS implementation:** The memory module should ship both layers:\n  `explicit` records (source: user command or confirmed event, user-visible,\n  CRUD API) and `implicit` recall (embedding search over full session\n  transcripts). Per-project toggles for each layer (T-03). A \"temporary\n  session\" flag that disables both read and write — default-off so privacy\n  mode is a deliberate, logged choice.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Background Consolidation (Dreaming-style memory)",
+    "what_it_does": "An offline background process periodically re-reads accumulated conversation history, synthesizes it into a living summary, revises outdated entries (a planned trip becomes a past event), merges duplicates, converts relative dates to absolute, and injects the synthesized state into new conversations' context.",
+    "why_it_works": "Raw memory accumulates like a hoarder's attic: stale, contradictory, duplicated. Consolidation is the REM sleep of memory — it keeps the record current without the user curating it.",
+    "genesis_implementation": "A scheduler cron (memory consolidation job): nightly sweep over explicit memories — mark stale by timestamp, contradiction-check new vs old, merge duplicates, rewrite relative dates. Confirmed-only rule (our T-06 from Astra): entries without a verified source event are candidates for deletion, never for promotion. Log every revision for audit.",
+    "raw": "- **What it does:** An offline background process periodically re-reads\n  accumulated conversation history, synthesizes it into a living summary,\n  revises outdated entries (a planned trip becomes a past event), merges\n  duplicates, converts relative dates to absolute, and injects the synthesized\n  state into new conversations' context.\n- **Why it works:** Raw memory accumulates like a hoarder's attic: stale,\n  contradictory, duplicated. Consolidation is the REM sleep of memory —\n  it keeps the record current without the user curating it.\n- **GENESIS implementation:** A scheduler cron (memory consolidation job):\n  nightly sweep over explicit memories — mark stale by timestamp,\n  contradiction-check new vs old, merge duplicates, rewrite relative dates.\n  Confirmed-only rule (our T-06 from Astra): entries without a verified\n  source event are candidates for deletion, never for promotion. Log every\n  revision for audit.",
+    "modules": [
+     "memory",
+     "scheduler"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-05",
+    "title": "Fresh-Chat-Per-Subtask (session hygiene)",
+    "use_when": "a long multi-part job risks context rot.",
+    "pattern": "One chat per subtask. Close each subtask with a 3-line handoff (done / open items / key decisions) that seeds the next chat. Never let a single session carry a whole project.",
+    "template": " > Start a fresh session for: <subtask>. > Handoff from previous: <what finished>, <what is still open>, > <decisions made, with dates>. > If context conflicts with the handoff, the handoff wins.",
+    "raw": "- **Use when:** a long multi-part job risks context rot.\n- **Pattern:** One chat per subtask. Close each subtask with a 3-line handoff\n  (done / open items / key decisions) that seeds the next chat. Never let a\n  single session carry a whole project.\n- **Template:**\n  > Start a fresh session for: <subtask>.\n  > Handoff from previous: <what finished>, <what is still open>,\n  > <decisions made, with dates>.\n  > If context conflicts with the handoff, the handoff wins.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Explicit \"Remember This\" Capture",
+    "use_when": "a fact in conversation must become durable memory.",
+    "pattern": "The user (or the assistant, asking) names the fact explicitly rather than trusting implicit extraction. Confirm what was stored.",
+    "template": " > Remember this: <fact in one sentence, with date if time-sensitive>. > Confirm: repeat back the stored memory, tagged with today's date.",
+    "raw": "- **Use when:** a fact in conversation must become durable memory.\n- **Pattern:** The user (or the assistant, asking) names the fact explicitly\n  rather than trusting implicit extraction. Confirm what was stored.\n- **Template:**\n  > Remember this: <fact in one sentence, with date if time-sensitive>.\n  > Confirm: repeat back the stored memory, tagged with today's date.",
+    "modules": [
+     "memory"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Project-Scoped Instruction Header",
+    "use_when": "launching work inside a project namespace (T-03).",
+    "pattern": "Every job names its project; the project's instructions and files load automatically; nothing outside the scope is reachable unless the job explicitly requests it and the request is logged.",
+    "template": " > Project: <name>. > Apply the project's instructions and files as the base context. > Anything you need from outside this project: name it, justify it, > and log the access. Silence is not permission.",
+    "raw": "- **Use when:** launching work inside a project namespace (T-03).\n- **Pattern:** Every job names its project; the project's instructions and\n  files load automatically; nothing outside the scope is reachable unless\n  the job explicitly requests it and the request is logged.\n- **Template:**\n  > Project: <name>.\n  > Apply the project's instructions and files as the base context.\n  > Anything you need from outside this project: name it, justify it,\n  > and log the access. Silence is not permission.",
+    "modules": [
+     "memory"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-02",
+    "title": "Long-Session Knowledge Building (project + memory)",
+    "body": "For jobs too long for one session: research, writing, multi-day builds.\n\n1. **PROJECT** — Open a project namespace: instructions + files + bounded\n   memory (T-03, P-07). All chats live inside it.\n   Exit: project record exists with scope locked.\n2. **SESSION** — Work in fresh chats per subtask (P-05). The assistant\n   consults memory before novel work (memory-first).\n   Exit: subtask done or blocked with evidence.\n3. **HANDOFF** — Close each session with the 3-line handoff\n   (done / open / decisions). Store to explicit memory only confirmed\n   facts (P-06).\n   Exit: handoff written; next session can start cold from it.\n4. **CONSOLIDATE** — Nightly background sweep (T-06): resolve\n   contradictions, mark stale entries, merge duplicates, fix relative\n   dates. Log every change.\n   Exit: memory state is current and auditable.\n5. **RESUME** — Any session restarts from the latest handoff + consolidated\n   memory. If they conflict, the handoff wins (P-05).\n   Exit: continuity verified by the father with one check-in question.\n\nGuarded failure modes: context rot (fresh-chat rule), stale memories\nresurfacing (consolidation), cross-project leakage (scope guard at PROJECT).",
+    "modules": [
+     "memory"
+    ]
+   }
+  ],
+  "guardrails": []
+ }
+}

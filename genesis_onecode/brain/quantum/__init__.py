@@ -15,12 +15,17 @@ Contents:
   seed_hub.py  — the ONLY sanctioned seed-consumption path. Fail-closed:
                  unregistered consumers and quantum_required consumers on a
                  non-quantum mother seed are refused (the halt is logged).
+  first_run.py — NEW in Phase 3 (not a vendored copy): creates a sealed
+                 local-CSPRNG mother seed on a fresh install, when none
+                 exists yet, so first births have a provenance at all.
+                 Its provenance is "local-csprng" — explicitly NOT quantum.
 
 QUANTUM-NAME INTEGRITY (YZ, 2026-10-11): nothing in this app may call
 itself quantum unless it consumes proven quantum seeds through this hub.
 Consumers that cannot get a certified draw must say so — see
 brain.womb, which records every birth's seed provenance
-("quantum-certified" vs "degraded-stdlib") instead of claiming silently.
+("quantum-certified" vs "local-csprng" vs "degraded-stdlib") instead
+of claiming silently.
 
 Runtime state for THIS copy lives in brain/quantum/state/ (mother seed,
 consumer registry, audit log, halts) — fully separate from the world

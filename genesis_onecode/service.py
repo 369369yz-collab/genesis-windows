@@ -4,7 +4,9 @@ Launched by the Tauri shell on YZ's PC with the bundled portable Python.
 Stdlib only. Exposes a tiny local HTTP API the face (frontend) talks to:
 
   GET  /health  -> liveness
-  GET  /status  -> llama-server reachability, model path, chromium path
+  GET  /status  -> llama-server reachability, model path, chromium path,
+                   plus the kernel block (honesty boot self-test, claims
+                   ledger stats, arbitration outcomes — Phase 3)
   POST /chat    -> {"message": str} -> {"reply": str} via the local LLM
 
 Env (set by the Rust launcher):
@@ -178,6 +180,87 @@ SYSTEM_PROMPT = (
 _started_at = time.time()
 
 
+# ---- Kernel wiring (Phase 3 embed, 2026-10-21) ------------------------------
+# kernel/honesty.py (boot self-test), kernel/arbitration.py (precedence)
+# and kernel/claims_ledger.py (anti-fabrication ledger) were test-only
+# code until this phase — nothing at runtime imported them. Now:
+#   * main() runs the honesty boot self-test once and /status reports it
+#     verbatim (failures included — never a faked green);
+#   * /chat's context assembly passes fact conflicts through arbitration
+#     (see arbitrated_facts near memory_context);
+#   * the womb records lifecycle claims into the claims ledger (the
+#     stats reported here come from that same ledger).
+# Everything kernel here is guarded: a missing/broken kernel degrades
+# the REPORT, never the service.
+
+_KERNEL_BOOT: dict | None = None
+
+
+def _load_kernel_module(name: str):
+    """Import a kernel module (package import, file-load fallback)."""
+    import importlib
+    try:
+        return importlib.import_module(f"kernel.{name}")
+    except Exception:
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "kernel", name + ".py")
+        spec = importlib.util.spec_from_file_location(
+            f"genesis_kernel_{name}", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+
+def _kernel_boot() -> dict:
+    """The cached honesty boot self-test result (runs once, honestly).
+
+    If the kernel cannot even be imported, the block says so — an
+    'unavailable' report, not a silent pass.
+    """
+    global _KERNEL_BOOT
+    if _KERNEL_BOOT is None:
+        try:
+            honesty = _load_kernel_module("honesty")
+            _KERNEL_BOOT = honesty.boot_self_test().to_dict()
+        except Exception as e:  # noqa: BLE001 — report, never fake green
+            _KERNEL_BOOT = {"available": False, "passed": False,
+                            "statement": f"kernel honesty unavailable: "
+                                         f"{type(e).__name__}: {e}",
+                            "checks": []}
+    return _KERNEL_BOOT
+
+
+def _claims_stats() -> dict:
+    """Claims-ledger stats from the very ledger the womb writes to."""
+    try:
+        from brain import womb as _womb
+        led = _womb.claims_ledger()
+        if led is None:
+            return {"available": False, "total": 0,
+                    "accepted": 0, "blocked": 0}
+        return {"available": True, **led.stats()}
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "total": 0, "accepted": 0,
+                "blocked": 0, "error": f"{type(e).__name__}: {e}"}
+
+
+# Arbitration consultation outcomes for this process (see arbitrated_facts).
+_last_arbitration: dict = {"conflicts_resolved": 0, "last": None}
+
+
+def _kernel_block() -> dict:
+    """The `kernel` block of /status: boot truth + ledger + arbitration."""
+    return {
+        "boot": _kernel_boot(),
+        "claims": _claims_stats(),
+        "arbitration": {
+            "conflicts_resolved": _last_arbitration["conflicts_resolved"],
+            "last": _last_arbitration["last"],
+        },
+    }
+
+
 def llama_chat(messages: list[dict], timeout: int = 120) -> str:
     """Forward a chat completion to the local llama-server (OpenAI-compatible)."""
     body = json.dumps({
@@ -332,6 +415,10 @@ class Handler(BaseHTTPRequestHandler):
                 "chromium_exe": chrom,
                 "chromium_present": bool(chrom) and pathlib.Path(chrom).exists(),
                 "uptime_s": round(time.time() - _started_at, 1),
+                # Kernel truth block (Phase 3): boot self-test result,
+                # claims-ledger stats, arbitration outcomes — honest
+                # values only; a broken kernel reports itself broken.
+                "kernel": _kernel_block(),
             })
         else:
             self._json({"ok": False, "error": "not found"}, 404)
@@ -637,11 +724,73 @@ def ensure_seed() -> int:
         return 0
 
 
+def _seed_fact_items() -> dict:
+    """The bundled seed facts (brain/seed_facts.json), read fresh."""
+    try:
+        with open(_SEED_FILE, encoding="utf-8") as f:
+            seed = json.load(f)
+        return {str(k): str(v) for k, v in seed.get("facts", [])}
+    except Exception:
+        return {}
+
+
+def _arbitration_queue_path() -> str:
+    base = os.environ.get("GENESIS_DATA_DIR", "genesis_data")
+    return os.path.join(base, "kernel", "decision_queue.jsonl")
+
+
+def arbitrated_facts() -> dict:
+    """Living-memory facts with kernel arbitration applied (Phase 3).
+
+    The /chat context merges two fact tiers:
+      - seed facts (bundled distilled identity/history) — local_law tier;
+      - lived memory facts (what YZ had her remember) — yz_direct tier.
+    Same key + same value: no conflict, included once. Same key,
+    DIFFERENT value: kernel/arbitration.py decides by precedence
+    (yz_direct > local_law) and the conflict is recorded to the
+    data-dir decision queue — a REAL runtime consultation of the
+    kernel, on the real context path. Any arbitration failure falls
+    back to the lived fact: arbitration informs the context, it can
+    never break the chat.
+    """
+    try:
+        from brain import memory as _mem
+        lived = _mem.all_facts()
+    except Exception:
+        return {}
+    seed = _seed_fact_items()
+    if not seed:
+        return dict(lived)
+    merged = dict(seed)
+    merged.update(lived)
+    conflicts = sorted(k for k in seed.keys() & lived.keys()
+                       if seed[k] != lived[k])
+    for key in conflicts:
+        try:
+            arb = _load_kernel_module("arbitration")
+            dec = arb.arbitrate(
+                [arb.Instruction(id=f"seed:{key}", topic=key,
+                                 action=seed[key], source="local_law",
+                                 provenance={"origin": "seed_facts.json"}),
+                 arb.Instruction(id=f"memory:{key}", topic=key,
+                                 action=str(lived[key]), source="yz_direct",
+                                 provenance={"origin": "living memory"})],
+                queue_path=_arbitration_queue_path())
+            if dec.winner is not None:
+                merged[key] = dec.winner.action
+                _last_arbitration["conflicts_resolved"] += 1
+                _last_arbitration["last"] = dec.to_dict()
+            else:
+                merged[key] = str(lived[key])
+        except Exception:
+            merged[key] = str(lived[key])
+    return merged
+
+
 def memory_context(max_chars: int = 2200) -> str:
     """Compact 'things I remember' block, injected into the chat prompt."""
     try:
-        from brain import memory as _mem
-        facts = _mem.all_facts()
+        facts = arbitrated_facts()
     except Exception:
         return ""
     if not facts:
@@ -685,6 +834,25 @@ def _womb_tick_loop():
 
 def main() -> int:
     ensure_seed()
+    # First-run mother seed (Phase 3): on a fresh install, create the
+    # sealed local-CSPRNG mother so the womb's first births carry a
+    # provenance instead of degrading to stdlib. Idempotent + fail-soft:
+    # a seeding failure never stops the brain from starting.
+    try:
+        from brain.quantum import first_run as _first_run
+        _ms = _first_run.ensure_mother_seed()
+        print(f"[brain] mother seed: {_ms}", flush=True)
+    except Exception as e:  # noqa: BLE001 — seed failure must not kill boot
+        print(f"[brain] mother seed skipped: {e}", flush=True)
+    # Kernel honesty boot self-test (Phase 3): run once at startup, cache
+    # for /status. The result is REPORTED, never gated on — if she fails
+    # her own self-test, the truthful block is what YZ sees.
+    try:
+        _boot = _kernel_boot()
+        print(f"[brain] kernel boot self-test: "
+              f"{_boot.get('statement', 'no statement')}", flush=True)
+    except Exception as e:  # noqa: BLE001 — honesty must not kill boot either
+        print(f"[brain] kernel boot self-test skipped: {e}", flush=True)
     try:
         from brain import sync as _sync
         if _sync.start():

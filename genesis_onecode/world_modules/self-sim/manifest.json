@@ -1,0 +1,20 @@
+{
+ "name": "genesis-selfsim",
+ "version": "1.0.0",
+ "description": "GENESIS self-simulation: Twin A (her identity from sealed assets) + Twin B (exact environment mirror) + fidelity loop. Fail-closed launch gate.",
+ "entry": "self_model.py",
+ "factory": "SelfSimulation",
+ "min_core_version": "3.0.0",
+ "files": [
+  "self_model.py",
+  "environment_model.py",
+  "simulation_loop.py",
+  "README.md"
+ ],
+ "sha256": {
+  "self_model.py": "fce3b207a3511574cf9c2de7356bd6bb1846e740740ed741a07fc8472453156c",
+  "environment_model.py": "665cd47f15b1b24d20cf678ce87ec6c84286a01a943b4f0e88e261616736ea78",
+  "simulation_loop.py": "10e6a0195ca37361aa62acc542e32ee6a5d628006b869cb3c907be59f8569fda",
+  "README.md": "5673d15735bf232b958d1650b2edf5add067e23a9ff6932d3b729fe93022022d"
+ }
+}

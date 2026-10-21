@@ -1,0 +1,28 @@
+{
+ "name": "genesis-tempemail",
+ "version": "1.0.0",
+ "description": "Disposable email: create, read and delete throwaway inboxes (privacy for signups).",
+ "entry": "tempemail_facade.py",
+ "factory": "TempEmailModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "requirements.txt",
+  "tempemail.py",
+  "tempemail_facade.py",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "7c1dfe035ab3b3e3d34b0a69eb42e7c5a56753f69f64c44001639a1a1f749737",
+  "requirements.txt": "9978197493531110f386b6fafc077f455f839cf250aa8806a620075f58c802bd",
+  "tempemail.py": "711026ddfed457f84c0364346caadbf9e578dce8a9fec0d4c079f1ba72a2eee8",
+  "tempemail_facade.py": "2bf4d3d067e7d8cfade44d71469e17da9725fe627fa15ea1096fb3a03bb5d57e",
+  "knowledge/__init__.py": "b0c5f273774369a72bdbf2449be3b00f046dc0f5a2e00db12faae5e991ca2788",
+  "knowledge/registry.py": "7f86af059eac57311eaf01170346451da0f83a51bb17af885e47947b4f535f79",
+  "knowledge/packs.json": "85255e1bfbc6b678060da9e7d1dbfedc7856ca7a0134a4bf3e48beca65249e9c",
+  "knowledge/test_knowledge.py": "baeacc18378a24debae63303079503f35ade402b96a76fcbb9e28351ec9d1ade"
+ }
+}

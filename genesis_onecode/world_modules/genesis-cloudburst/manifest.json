@@ -1,0 +1,28 @@
+{
+ "name": "genesis-cloudburst",
+ "version": "1.0.0",
+ "description": "Decides whether a heavy GPU-flagged job may leave the local PC; honest manual handoff to a free-tier GPU session, never fake auto-submit.",
+ "entry": "cloudburst_facade.py",
+ "factory": "CloudburstModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "cloudburst.py",
+  "cloudburst_facade.py",
+  "requirements.txt",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "673d8611e98b04a3b6f439d151d287acc791446db912d1f5142f75fdfb12f1b0",
+  "cloudburst.py": "9e786449b14102d3e8ed2a12ea53849071127f36c304dd0ca5ecf870ebf28c6d",
+  "cloudburst_facade.py": "463dbe7086239d3d28f03e6f8961e667124f009c14c7ba330bb94a0638d2f4fb",
+  "requirements.txt": "0eb7ad172462f6853c6f268312602478ac4c9350930fbc17f04a1965be58415b",
+  "knowledge/__init__.py": "a30945b9cff7765abefc1258a0d9269692e482316a90598232e5847c3c29353b",
+  "knowledge/registry.py": "0803c1be24f16fde83c73c694b0d57bb0956810cf6022c4eed0bca7f4aa7603b",
+  "knowledge/packs.json": "85255e1bfbc6b678060da9e7d1dbfedc7856ca7a0134a4bf3e48beca65249e9c",
+  "knowledge/test_knowledge.py": "e4b2aa4f1b5cf78c5fb7c16d5c82e6ddd8ce66f8aa1a0c09dc8acba77b4f8abb"
+ }
+}

@@ -1,0 +1,3 @@
+# genesis-eyes runtime requirements (free, open-source, zero spend)
+mss>=10.0        # cross-platform screen capture (dev fallback on non-Windows)
+pillow>=10.0     # PNG encoding; on Windows also the native capture backend (ImageGrab)

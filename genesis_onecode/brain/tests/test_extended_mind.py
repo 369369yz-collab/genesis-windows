@@ -141,5 +141,60 @@ class TestTimeout(unittest.TestCase):
         self.assertLess(dt, 15)
 
 
+class TestModulesDirResolution(unittest.TestCase):
+    """Phase 3: vendored world_modules/ inside the app is the default.
+
+    Resolution order: explicit arg > env GENESIS_WORLD_MODULES >
+    vendored genesis_onecode/world_modules > legacy VM path. The legacy
+    path does not exist on YZ's PC — the vendored copy is what makes
+    the adapter PC-safe.
+    """
+
+    def test_explicit_arg_still_wins(self):
+        em = extmod.ExtendedMind(modules_dir="/tmp/explicit-xyz")
+        self.assertEqual(em.modules_dir, "/tmp/explicit-xyz")
+
+    def test_env_var_wins_over_vendored(self):
+        import unittest.mock as mock
+        with mock.patch.dict(
+                os.environ, {"GENESIS_WORLD_MODULES": "/tmp/env-mods-xyz"}):
+            em = extmod.ExtendedMind()
+        self.assertEqual(em.modules_dir, "/tmp/env-mods-xyz")
+
+    def test_vendored_dir_is_default_without_env_or_legacy(self):
+        import unittest.mock as mock
+        env = {k: v for k, v in os.environ.items()
+               if k != "GENESIS_WORLD_MODULES"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(extmod, "_DEFAULT_MODULES_DIR",
+                                   "/tmp/definitely-not-here-legacy"):
+                em = extmod.ExtendedMind()
+        self.assertEqual(em.modules_dir, extmod._VENDORED_MODULES_DIR)
+        self.assertTrue(os.path.isdir(em.modules_dir))
+        mods = em.list_modules()
+        self.assertEqual(len(mods), 14)
+        self.assertEqual({m["name"] for m in mods},
+                         set(extmod.MODULE_NAMES))
+
+    def test_vendored_dir_wins_in_fresh_interpreter(self):
+        # A brand-new interpreter, no env override: the resolved default
+        # must be the vendored in-app dir (the legacy VM path also
+        # exists on this machine, so this proves the ORDER, and on a PC
+        # without the VM tree it is the only candidate that exists).
+        import subprocess
+        code = (
+            "import sys; sys.path.insert(0, %r); "
+            "import extended_mind as e; "
+            "print(e.ExtendedMind().modules_dir)" % os.path.join(_HERE, ".."))
+        env = {k: v for k, v in os.environ.items()
+               if k != "GENESIS_WORLD_MODULES"}
+        proc = subprocess.run([sys.executable, "-c", code],
+                              capture_output=True, text=True, env=env,
+                              timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.strip(),
+                         extmod._VENDORED_MODULES_DIR)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

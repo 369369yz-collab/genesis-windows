@@ -1,0 +1,229 @@
+{
+ "astra": {
+  "techniques": [
+   {
+    "id": "T-02",
+    "title": "Two-Stage Training Pipeline (demonstrations, then RL)",
+    "what_it_does": "Base perception and input control are first taught with supervised learning on human demonstrations; reinforcement learning is then applied specifically for reasoning, error correction, and adaptation to unexpected events.",
+    "why_it_works": "Supervision teaches \"what correct looks like\"; RL teaches \"how to recover when reality deviates.\" Splitting them keeps the recovery policy from corrupting the base skill.",
+    "genesis_implementation": "For the eyes module (screen understanding): ship a base grounding model trained on labeled UI screenshots, then add a separate correction policy trained on our own failure traces (wrong clicks, missed targets). Keep the two as separate artifacts so the correction layer can be retrained without touching the base.",
+    "raw": "- **What it does:** Base perception and input control are first taught with\n  supervised learning on human demonstrations; reinforcement learning is then\n  applied specifically for reasoning, error correction, and adaptation to\n  unexpected events.\n- **Why it works:** Supervision teaches \"what correct looks like\"; RL teaches\n  \"how to recover when reality deviates.\" Splitting them keeps the recovery\n  policy from corrupting the base skill.\n- **GENESIS implementation:** For the eyes module (screen understanding): ship a\n  base grounding model trained on labeled UI screenshots, then add a separate\n  correction policy trained on our own failure traces (wrong clicks, missed\n  targets). Keep the two as separate artifacts so the correction layer can be\n  retrained without touching the base.",
+    "modules": [
+     "eyes"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Native Screen Grounding Without Tools",
+    "what_it_does": "The model maps natural-language element descriptions directly to screen coordinates (reported 92.7% on ScreenSpot-Pro) with no accessibility tree, DOM dump, or helper tooling in the loop.",
+    "why_it_works": "Grounding is the bottleneck of computer use — most perceived \"agent stupidity\" is really click inaccuracy. Removing the tool layer removes a whole class of mismatch errors (stale DOM, hidden elements).",
+    "genesis_implementation": "The eyes module should learn a direct description→coordinates head on screenshot input, evaluated on a held-out set of real application screenshots. Treat grounding accuracy as the module's primary KPI; every percentage point of click accuracy removes retry loops downstream.",
+    "raw": "- **What it does:** The model maps natural-language element descriptions directly\n  to screen coordinates (reported 92.7% on ScreenSpot-Pro) with no accessibility\n  tree, DOM dump, or helper tooling in the loop.\n- **Why it works:** Grounding is the bottleneck of computer use — most perceived\n  \"agent stupidity\" is really click inaccuracy. Removing the tool layer removes a\n  whole class of mismatch errors (stale DOM, hidden elements).\n- **GENESIS implementation:** The eyes module should learn a direct\n  description→coordinates head on screenshot input, evaluated on a held-out set\n  of real application screenshots. Treat grounding accuracy as the module's\n  primary KPI; every percentage point of click accuracy removes retry loops\n  downstream.",
+    "modules": [
+     "eyes"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "higgsfield": {
+  "techniques": [
+   {
+    "id": "T-06",
+    "title": "Hero Frame First (start-frame anchoring)",
+    "what_it_does": "The workflow is image-first: generate or select one strong still (the hero frame), then animate it (image-to-video) rather than generating motion from text alone. Attaching the first generated frame as a reference for subsequent shots costs little and measurably raises likeness; an optional end frame pins the clip's destination.",
+    "why_it_works": "A text prompt describes a distribution; a frame is a fixed target. Motion synthesis conditioned on a fixed frame preserves what matters (face, product, composition) and only invents the movement.",
+    "genesis_implementation": "Hard-order the asset pipeline in lab/hands: no image-to-video job runs without a locked hero frame artifact on disk; the QC gate opens the frame, not the prompt, first. For series work, the hero frame of shot N-1 becomes the start frame of shot N (end-to-start chaining), which is the cheap version of multi-shot continuity.",
+    "raw": "- **What it does:** The workflow is image-first: generate or select one strong\n  still (the hero frame), then animate it (image-to-video) rather than\n  generating motion from text alone. Attaching the first generated frame as a\n  reference for subsequent shots costs little and measurably raises likeness;\n  an optional end frame pins the clip's destination.\n- **Why it works:** A text prompt describes a distribution; a frame is a\n  fixed target. Motion synthesis conditioned on a fixed frame preserves what\n  matters (face, product, composition) and only invents the movement.\n- **GENESIS implementation:** Hard-order the asset pipeline in lab/hands:\n  no image-to-video job runs without a locked hero frame artifact on disk;\n  the QC gate opens the frame, not the prompt, first. For series work, the\n  hero frame of shot N-1 becomes the start frame of shot N (end-to-start\n  chaining), which is the cheap version of multi-shot continuity.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "T-14",
+    "title": "Grid Generation + Composite Reference Sheet (pre-training consistency)",
+    "what_it_does": "Generate the character with 2x2/4x4 grid variations, capture front/side/3-4 angles (3D orbit mode), arrange the best angles into a single composite reference sheet, and upload THAT as the identity reference. Multi-angle sheets dramatically improve consistency across extreme angle changes and profile views.",
+    "why_it_works": "A single reference photo under-constrains the face in 3D; the model must invent what the profile looks like. A composite sheet gives it the profile, the three-quarter, the front — invention is replaced with reference.",
+    "genesis_implementation": "Standardize the identity-profile folder (T-03): it must contain the multi-angle composite sheet, not a single photo, before a character is \"locked\". The profile-lock gate checks for ≥3 angles + the descriptor block. This is the avatar module's onboarding ritual too. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor claim | Independent evidence | |---|---|---| | Creator scale (18M+, ~4M videos/day) | Reported on platform | Independent verification not available; treat as marketing-scale claim | | Camera preset execution (\"executes exactly as instructed\") | Official blog / help center | Reviewers confirm camera control is the platform's standout strength vs. rivals (therundown.ai, justbeingresourceful.com) | | Character consistency (Soul ID) | \"Same face across every image and video\" | Reviewers: helps significantly but NOT perfect — faces/outfits/proportions can still shift without careful reference management (justbeingresourceful.com) | | Output quality tracks the selected model | Aggregation disclosed on pricing/help | Reviewers confirm: quality follows the underlying engine, so results vary by model choice (medium.com comparison) | | Cost visibility (cost shown before generation) | Feature listed on studio UI | Reviewers confirm it genuinely helps budgeting (toolinsightpro.com) | | Single subscription, one credit balance | Pricing page | Confirmed by multiple independent reviews; BUT reviewers warn credit burn on frontier models is fast and \"unlimited\" tiers have fair-use throttling | | Genjutsu motion preservation | Official launch material | Community walkthroughs confirm simple swap workflows work; copyright caution raised by creators re: transforming others' work | | Enterprise/ARR traction | Investor-site coverage (ainvest.com) | A blog analysis explicitly warns: request primary filings before treating revenue/ARR as verified | --- ## Sources - https://higgsfield.ai/creator-hub/help-center/getting-started/what-is-higgsfield - https://higgsfield.ai/blog/turn-your-video-into-cinema-using-wan-camera-control - https://higgsfield.ai/blog/keep-characters-consistent-ai-animated-series - https://higgsfield.ai/blog/ai-video-prompt-mistakes - https://www.thehypemagazine.com/2026/10/09/what-is-higgsfield-ai-uses-features-pricing/ - https://justbeingresourceful.com/2026/09/28/higgsfield-ai-review-one-subscription-for-15-video-models-a-production-stack-and-a-valuation-that-says-its-not-messing-around/ - https://www.therundown.ai/tools/higgsfield - https://www.toolinsightpro.com/higgsfield-ai-review/ - https://www.vo3ai.com/higgsfield-ai-pricing - https://www.imagine.art/blogs/higgsfield-ai-pricing - https://www.toolbit.ai/blog/higgsfield-ai-full-tutorial - https://github.com/w0ver/higgsfield-api-comfyui-nodes/blob/HEAD/README.md - https://github.com/halilogia/blender-copilot/blob/HEAD/docs/HIGGSFIELD.md - https://github.com/OSideMedia/higgsfield-ai-prompt-skill/raw/e68a2f7f93a42452b1834c94b1009fff258cc779/USER-GUIDE.pdf (community prompt skill v3.7.6; identity/motion separation rule summarized in own words above) - https://github.com/promptwhat/promptwhat-soul2-skill/blob/main/README.en.md - https://github.com/postbasehq/postbase/commit/cc8c1cbfb29ff8aacf17004145d37088df2e4866 - http://dev.to/aeoninc/higgsfield-on-aeon-three-modes-100-models-two-outputs-hba - http://hottrendingtrendz.blogspot.com/2026/09/higgsfield-what-ai-video-startup-is-and.html - http://aitechguide123.blogspot.com/2026/04/higgsfield-ai-kya-hai-future-ai.html - http://vuela.ai/alternative/higgsfield/pricing - https://medium.com/@aroojishtiyaq/imagineart-vs-higgsfield-stop-comparing-them-wrong-ad101e9aa00b - https://www.selecthub.com/ai-video-generator-software/higgsfield-ai-vs-revid-ai All facts above are summaries in our own words of publicly reported information. Pricing figures are third-party-reported (Sept–Oct 2026) and may change; the official pricing page is the authority. No copyrighted text reproduced beyond brief attributed phrases. ## Pricing reference (third-party-reported, ~Sept–Oct 2026; verify on higgsfield.ai/pricing) | Plan | Monthly | Annual/mo | Credits/mo | |---|---|---|---| | Free | $0 | $0 | ~10/day, watermarked, limited models | | Starter | ~$15–19 | ~$15–19 | 200–270, selected models (no Veo 3 family) | | Plus | ~$49–59 | ~$39–47 | 1,000–1,200, all models | | Ultra (popular) | ~$129 | ~$99 | 3,000 (scalable to 9,000) | | Business/Team | ~$62–89/seat | ~$62–65/seat | 1,500/seat pooled | Notes: credits do not roll over; top-ups (~$5/100) expire ~90 days; reported per-generation costs: ~1 credit/image (Seedream), ~2 (Nano Banana Pro), ~14 (Kling 3.0 8s), up to ~9 credits/sec (premium 1080p video), 40–70 per frontier-model clip. \"Unlimited\" offers cover a narrow image-model list with fair-use throttling. Commercial rights from Starter up.",
+    "raw": "- **What it does:** Generate the character with 2x2/4x4 grid variations,\n  capture front/side/3-4 angles (3D orbit mode), arrange the best angles into\n  a single composite reference sheet, and upload THAT as the identity\n  reference. Multi-angle sheets dramatically improve consistency across\n  extreme angle changes and profile views.\n- **Why it works:** A single reference photo under-constrains the face in 3D;\n  the model must invent what the profile looks like. A composite sheet gives\n  it the profile, the three-quarter, the front — invention is replaced with\n  reference.\n- **GENESIS implementation:** Standardize the identity-profile folder (T-03):\n  it must contain the multi-angle composite sheet, not a single photo,\n  before a character is \"locked\". The profile-lock gate checks for ≥3 angles\n  + the descriptor block. This is the avatar module's onboarding ritual too.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor claim | Independent evidence |\n|---|---|---|\n| Creator scale (18M+, ~4M videos/day) | Reported on platform | Independent verification not available; treat as marketing-scale claim |\n| Camera preset execution (\"executes exactly as instructed\") | Official blog / help center | Reviewers confirm camera control is the platform's standout strength vs. rivals (therundown.ai, justbeingresourceful.com) |\n| Character consistency (Soul ID) | \"Same face across every image and video\" | Reviewers: helps significantly but NOT perfect — faces/outfits/proportions can still shift without careful reference management (justbeingresourceful.com) |\n| Output quality tracks the selected model | Aggregation disclosed on pricing/help | Reviewers confirm: quality follows the underlying engine, so results vary by model choice (medium.com comparison) |\n| Cost visibility (cost shown before generation) | Feature listed on studio UI | Reviewers confirm it genuinely helps budgeting (toolinsightpro.com) |\n| Single subscription, one credit balance | Pricing page | Confirmed by multiple independent reviews; BUT reviewers warn credit burn on frontier models is fast and \"unlimited\" tiers have fair-use throttling |\n| Genjutsu motion preservation | Official launch material | Community walkthroughs confirm simple swap workflows work; copyright caution raised by creators re: transforming others' work |\n| Enterprise/ARR traction | Investor-site coverage (ainvest.com) | A blog analysis explicitly warns: request primary filings before treating revenue/ARR as verified |\n\n---\n\n## Sources\n\n- https://higgsfield.ai/creator-hub/help-center/getting-started/what-is-higgsfield\n- https://higgsfield.ai/blog/turn-your-video-into-cinema-using-wan-camera-control\n- https://higgsfield.ai/blog/keep-characters-consistent-ai-animated-series\n- https://higgsfield.ai/blog/ai-video-prompt-mistakes\n- https://www.thehypemagazine.com/2026/10/09/what-is-higgsfield-ai-uses-features-pricing/\n- https://justbeingresourceful.com/2026/09/28/higgsfield-ai-review-one-subscription-for-15-video-models-a-production-stack-and-a-valuation-that-says-its-not-messing-around/\n- https://www.therundown.ai/tools/higgsfield\n- https://www.toolinsightpro.com/higgsfield-ai-review/\n- https://www.vo3ai.com/higgsfield-ai-pricing\n- https://www.imagine.art/blogs/higgsfield-ai-pricing\n- https://www.toolbit.ai/blog/higgsfield-ai-full-tutorial\n- https://github.com/w0ver/higgsfield-api-comfyui-nodes/blob/HEAD/README.md\n- https://github.com/halilogia/blender-copilot/blob/HEAD/docs/HIGGSFIELD.md\n- https://github.com/OSideMedia/higgsfield-ai-prompt-skill/raw/e68a2f7f93a42452b1834c94b1009fff258cc779/USER-GUIDE.pdf (community prompt skill v3.7.6; identity/motion separation rule summarized in own words above)\n- https://github.com/promptwhat/promptwhat-soul2-skill/blob/main/README.en.md\n- https://github.com/postbasehq/postbase/commit/cc8c1cbfb29ff8aacf17004145d37088df2e4866\n- http://dev.to/aeoninc/higgsfield-on-aeon-three-modes-100-models-two-outputs-hba\n- http://hottrendingtrendz.blogspot.com/2026/09/higgsfield-what-ai-video-startup-is-and.html\n- http://aitechguide123.blogspot.com/2026/04/higgsfield-ai-kya-hai-future-ai.html\n- http://vuela.ai/alternative/higgsfield/pricing\n- https://medium.com/@aroojishtiyaq/imagineart-vs-higgsfield-stop-comparing-them-wrong-ad101e9aa00b\n- https://www.selecthub.com/ai-video-generator-software/higgsfield-ai-vs-revid-ai\n\nAll facts above are summaries in our own words of publicly reported\ninformation. Pricing figures are third-party-reported (Sept–Oct 2026) and may\nchange; the official pricing page is the authority. No copyrighted text\nreproduced beyond brief attributed phrases.\n\n## Pricing reference (third-party-reported, ~Sept–Oct 2026; verify on higgsfield.ai/pricing)\n\n| Plan | Monthly | Annual/mo | Credits/mo |\n|---|---|---|---|\n| Free | $0 | $0 | ~10/day, watermarked, limited models |\n| Starter | ~$15–19 | ~$15–19 | 200–270, selected models (no Veo 3 family) |\n| Plus | ~$49–59 | ~$39–47 | 1,000–1,200, all models |\n| Ultra (popular) | ~$129 | ~$99 | 3,000 (scalable to 9,000) |\n| Business/Team | ~$62–89/seat | ~$62–65/seat | 1,500/seat pooled |\n\nNotes: credits do not roll over; top-ups (~$5/100) expire ~90 days; reported\nper-generation costs: ~1 credit/image (Seedream), ~2 (Nano Banana Pro),\n~14 (Kling 3.0 8s), up to ~9 credits/sec (premium 1080p video), 40–70 per\nfrontier-model clip. \"Unlimited\" offers cover a narrow image-model list with\nfair-use throttling. Commercial rights from Starter up.",
+    "modules": [
+     "eyes",
+     "station"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-02",
+    "title": "Hero Frame First",
+    "use_when": "generating any clip where likeness or composition matters.",
+    "pattern": "Produce (or select) the still first; the video prompt then says only what MOVES, referencing the locked frame. (From T-06.)",
+    "template": " > STEP 1: Lock frame <file/id> as the hero frame. QC it: face correct, > product correct, composition correct. > STEP 2: Animate the frame. Motion prompt: \"<what moves and how>\". > Everything else is frozen as in the frame. Duration: <N>s. > Do not reinterpret anything visible in the frame.",
+    "raw": "- **Use when:** generating any clip where likeness or composition matters.\n- **Pattern:** Produce (or select) the still first; the video prompt then\n  says only what MOVES, referencing the locked frame. (From T-06.)\n- **Template:**\n  > STEP 1: Lock frame <file/id> as the hero frame. QC it: face correct,\n  > product correct, composition correct.\n  > STEP 2: Animate the frame. Motion prompt: \"<what moves and how>\".\n  > Everything else is frozen as in the frame. Duration: <N>s.\n  > Do not reinterpret anything visible in the frame.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "flow": {
+  "techniques": [
+   {
+    "id": "T-10",
+    "title": "Drawing Instructions on Reference Images (motion vectors as input)",
+    "what_it_does": "The user can draw directly on a reference image to indicate the desired direction of movement — arrows and strokes become motion intent.",
+    "why_it_works": "Motion is notoriously hard to describe in prose (\"move gracefully\"). A drawn arrow is unambiguous and language-independent.",
+    "genesis_implementation": "Where our own tooling accepts spatial intent, accept vector annotations (arrow = direction + magnitude) as a first-class prompt input, not prose. Applies to camera moves, object trajectories, and attention-grabbing motion in reels/thumbnails.",
+    "raw": "- **What it does:** The user can draw directly on a reference image to\n  indicate the desired direction of movement — arrows and strokes become\n  motion intent.\n- **Why it works:** Motion is notoriously hard to describe in prose (\"move\n  gracefully\"). A drawn arrow is unambiguous and language-independent.\n- **GENESIS implementation:** Where our own tooling accepts spatial intent,\n  accept vector annotations (arrow = direction + magnitude) as a first-class\n  prompt input, not prose. Applies to camera moves, object trajectories,\n  and attention-grabbing motion in reels/thumbnails.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "chatgpt-images": {
+  "techniques": [
+   {
+    "id": "T-07",
+    "title": "Text-in-Image Rendering via Quoted Text",
+    "what_it_does": "To render text inside an image, the exact string is placed in quotes in the prompt — practitioners quote it twice (once in the main text block, once in a constraints reminder) to reduce spelling drift. The model family was specifically improved for dense and small text: infographics, labels, menus, mockups.",
+    "why_it_works": "Quoted strings give the model a literal target instead of a concept to paraphrase. Double placement gives two binding chances. Density handling (many small labels) comes from training emphasis, which we cannot replicate — but the prompting discipline we can.",
+    "genesis_implementation": "Our text-overlay pipeline should treat AI-rendered text as a DRAFT: quote strings exactly, double-place critical headlines, and always run a spelling verification pass after generation (OCR the output or, cheaper, visually QC). For 369's English-only brand text, prefer compositing real type with code (PIL) over model-rendered text whenever precision is non-negotiable — model text for backgrounds, code text for headlines.",
+    "raw": "- **What it does:** To render text inside an image, the exact string is placed\n  in quotes in the prompt — practitioners quote it twice (once in the main\n  text block, once in a constraints reminder) to reduce spelling drift. The\n  model family was specifically improved for dense and small text:\n  infographics, labels, menus, mockups.\n- **Why it works:** Quoted strings give the model a literal target instead of\n  a concept to paraphrase. Double placement gives two binding chances.\n  Density handling (many small labels) comes from training emphasis, which we\n  cannot replicate — but the prompting discipline we can.\n- **GENESIS implementation:** Our text-overlay pipeline should treat\n  AI-rendered text as a DRAFT: quote strings exactly, double-place critical\n  headlines, and always run a spelling verification pass after generation\n  (OCR the output or, cheaper, visually QC). For 369's English-only brand\n  text, prefer compositing real type with code (PIL) over model-rendered\n  text whenever precision is non-negotiable — model text for backgrounds,\n  code text for headlines.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Double-Quoted Text Rule",
+    "use_when": "the image must contain readable text (headline, label, sign, menu, callout).",
+    "pattern": "Quote the exact string in double quotes. For critical strings (headlines, brand names), place the quoted string TWICE: once in the main text description, once in the Constraints reminder.",
+    "template": " > The poster headline reads \"EXACT HEADLINE HERE\" in bold condensed > sans-serif, centered in the upper third. > Constraints: the only text on the image is \"EXACT HEADLINE HERE\", > spelled exactly, no additional words, no paraphrase. > Always QC the output: zoom in, spell-check every word, reject and > regenerate on any error. For 369 sealed text, prefer code-composited > type over model-rendered text.",
+    "raw": "- **Use when:** the image must contain readable text (headline, label, sign,\n  menu, callout).\n- **Pattern:** Quote the exact string in double quotes. For critical\n  strings (headlines, brand names), place the quoted string TWICE: once in\n  the main text description, once in the Constraints reminder.\n- **Template:**\n  > The poster headline reads \"EXACT HEADLINE HERE\" in bold condensed\n  > sans-serif, centered in the upper third.\n  > Constraints: the only text on the image is \"EXACT HEADLINE HERE\",\n  > spelled exactly, no additional words, no paraphrase.\n  > Always QC the output: zoom in, spell-check every word, reject and\n  > regenerate on any error. For 369 sealed text, prefer code-composited\n  > type over model-rendered text.",
+    "modules": [
+     "eyes",
+     "lab"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Concept → Final Asset (explore → anchor → refine → QC → deliver)",
+    "body": "The master production workflow for a single hero image.\n\n1. **BRIEF** — Write the P-01 sectioned brief (Scene/Subject/Details/Use\n   case/Constraints), 250–400 words. Entry: the deliverable spec is known\n   (size, format, where it ships). Exit: brief passes the lint (positive\n   framing per P-05, hero front-loaded per P-02, no vague words).\n2. **EXPLORE** — Generate 2–4 variants at LOW quality (T-08 draft tier).\n   Exit: one direction chosen by the reviewer; the rest are discarded, not\n   stored.\n3. **ANCHOR** — Lock the winning direction: generate or select the reference\n   assets (T-04 role-labeled references) and write the P-03 consistency\n   block if anything must recur. Exit: reference set + consistency block\n   are versioned and stored with the job.\n4. **RENDER** — One generation at MEDIUM or HIGH quality with the full\n   brief, references, and size/format locked (T-11 transparent PNG if the\n   asset is a layer). Exit: a render that matches the brief on structure,\n   subject, and style.\n5. **QC** — Independent review against the brief: spelling of every quoted\n   string (P-04), anatomy sanity, no collateral changes, brand-fit check.\n   Exit: PASS, or a single specific fix-list for one edit round.\n6. **DELIVER** — Final file + job record (prompt, seed, references, cost,\n   provenance stamp per T-12). Exit: the asset is in its library with a\n   name and version; the reviewer, not the generator, signed off.\n\nFailure modes guarded: prompt bloat (word-count lint in BRIEF),\ndraft-priced finals (quality ladder enforced by stage), unverified \"done\"\nclaims (QC before DELIVER), anonymous assets (job record with provenance).",
+    "modules": [
+     "eyes",
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Series Consistency (campaign / carousel / multi-panel set)",
+    "body": "For N images that must read as one family.\n\n1. **DEFINE** — Lock the family identity: write the P-03 consistency block\n   for every recurring element (character, object, location, palette,\n   typography treatment) and store it as the single source of truth.\n   Entry: the series concept is approved. Exit: one locked identity block,\n   versioned.\n2. **ANCHOR SHEET** — Generate the reference sheet first (T-03): for a\n   character, front/side/back + expressions + palette; for a style, the\n   master composition at the series dimensions. Exit: the anchor sheet\n   passes QC and is the visual law of the series.\n3. **PER-ITEM BRIEFS** — Each item gets a P-01 brief where the Subject slot\n   is the identity block injected VERBATIM (T-03, T-10) plus the item's\n   unique Scene. Exit: N briefs, all sharing identical Subject text.\n4. **GENERATE** — Render items sequentially, each with the anchor sheet\n   passed as a reference image (T-04). Exit: N candidate images.\n5. **FAMILY REVIEW** — Review all N side by side: same face, same outfit,\n   same palette, same typography treatment across the set — not just each\n   image against its own brief. Exit: PASS for all, or named items return\n   to GENERATE with the identical (unchanged) brief.\n6. **SEAL** — Version the set as one deliverable; store the identity block\n   and anchor sheet with it for future extensions of the series.\n\nFailure modes guarded: paraphrase drift (verbatim injection is code, not\ntyping), single-image blindness (family review catches cross-item\ninconsistency), style averaging (role-labeled references, not mood boards).",
+    "modules": [
+     "eyes",
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Product/Packshot Photography (preserve product, vary environment)",
+    "body": "For commercial product visuals without a studio.\n\n1. **PRODUCT LOCK** — The source product photo is the immutable reference:\n   exact shape, color, label, proportions recorded. Entry: a clean product\n   image exists. Exit: product-lock record (these attributes must survive\n   every generation).\n2. **SCENE BRIEF** — Describe the environment only; the product is injected\n   as \"the locked product, preserved exactly\" (P-09). Never re-describe the\n   product in prose. Exit: scene brief with the preserve-first structure.\n3. **RENDER** — Generate at MEDIUM quality, HIGH input fidelity (T-06),\n   product reference passed as an input image. Exit: scene render.\n4. **PRODUCT QC** — Compare the rendered product against the product-lock\n   record attribute by attribute (shape, color, label spelling, proportions).\n   This is a hard gate: any deviation = regenerate. Exit: PASS or regenerate\n   with the same lock.\n5. **FINAL PASS** — Re-render the accepted scene at HIGH quality; final QC\n   repeats step 4. Exit: sealed asset + product-lock record archived with it.\n\nFailure modes guarded: product hallucination (lock record + hard gate),\nlabel misspelling (spelling is part of the lock), studio cost (environment\nvariation is the only variable; the product never varies).",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "replit-agent": {
+  "techniques": [
+   {
+    "id": "T-05",
+    "title": "Live Preview as Verification Oracle (reflection loop)",
+    "what_it_does": "After building, the agent runs the app in a live preview and then exercises it like a user — clicks buttons, fills forms, logs in to check user flows, spots bugs, fixes them, and re-runs. Community guides call this the signature step: the builder watches the agent test itself in a reflection loop.",
+    "why_it_works": "A build is not verified by \"code compiles\"; it is verified by \"the user flow works end to end.\" Making the agent its own first user catches integration bugs that static checks miss — the exact layer where vibe-coded apps silently break.",
+    "genesis_implementation": "Give the hands module a `self_verify()` stage for app builds: after `run`, drive the app through its declared happy paths (via headless browser or API calls) and compare observed behavior against the acceptance criteria from the plan. A build cannot reach \"publish\" without a passing self-verification record. This is the idea→prototype analog of the Astra T-01 closed loop.",
+    "raw": "- **What it does:** After building, the agent runs the app in a live preview\n  and then exercises it like a user — clicks buttons, fills forms, logs in to\n  check user flows, spots bugs, fixes them, and re-runs. Community guides call\n  this the signature step: the builder watches the agent test itself in a\n  reflection loop.\n- **Why it works:** A build is not verified by \"code compiles\"; it is verified\n  by \"the user flow works end to end.\" Making the agent its own first user\n  catches integration bugs that static checks miss — the exact layer where\n  vibe-coded apps silently break.\n- **GENESIS implementation:** Give the hands module a `self_verify()` stage for\n  app builds: after `run`, drive the app through its declared happy paths\n  (via headless browser or API calls) and compare observed behavior against\n  the acceptance criteria from the plan. A build cannot reach \"publish\"\n  without a passing self-verification record. This is the idea→prototype\n  analog of the Astra T-01 closed loop.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ }
+}

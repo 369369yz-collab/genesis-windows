@@ -1,0 +1,1308 @@
+{
+ "astra": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Closed-Loop Agent Cycle (observe → interpret → act → verify)",
+    "what_it_does": "Every action the agent takes is embedded in a four-phase loop: observe the current state, interpret it against the goal, act, then verify the result before proceeding.",
+    "why_it_works": "Open-loop agents (act without verifying) accumulate silent failures. The verify step converts each action into a checkpoint, so drift is caught at the step where it happens instead of at the end.",
+    "genesis_implementation": "Extend the hands module's step_runner so every step returns a structured observation (state diff), and the permission_gate requires a verify() call before the next step is authorized. A step that cannot be verified is quarantined, not retried blindly.",
+    "raw": "- **What it does:** Every action the agent takes is embedded in a four-phase loop:\n  observe the current state, interpret it against the goal, act, then verify the\n  result before proceeding.\n- **Why it works:** Open-loop agents (act without verifying) accumulate silent\n  failures. The verify step converts each action into a checkpoint, so drift is\n  caught at the step where it happens instead of at the end.\n- **GENESIS implementation:** Extend the hands module's step_runner so every step\n  returns a structured observation (state diff), and the permission_gate requires\n  a verify() call before the next step is authorized. A step that cannot be\n  verified is quarantined, not retried blindly.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Inner Monologue (recurrent reasoning before output)",
+    "what_it_does": "The model cycles through internal reasoning layers multiple times before producing any visible output, effectively thinking longer on hard steps.",
+    "why_it_works": "It decouples reasoning depth from output length — the agent can deliberate without committing to an action or flooding the transcript.",
+    "genesis_implementation": "In the hands module, add a `deliberate()` phase before each high-stakes action (file writes, sends, deletes): run 2–3 internal reasoning passes over the observation + goal, and only then emit the action. Gate the number of passes by the action's reversibility class.",
+    "raw": "- **What it does:** The model cycles through internal reasoning layers multiple\n  times before producing any visible output, effectively thinking longer on hard\n  steps.\n- **Why it works:** It decouples reasoning depth from output length — the agent\n  can deliberate without committing to an action or flooding the transcript.\n- **GENESIS implementation:** In the hands module, add a `deliberate()` phase\n  before each high-stakes action (file writes, sends, deletes): run 2–3 internal\n  reasoning passes over the observation + goal, and only then emit the action.\n  Gate the number of passes by the action's reversibility class.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Memory-First Loop (retrieve before acting, store only confirmed)",
+    "what_it_does": "Before attempting a fix, the agent searches a memory of previously confirmed solutions; after a fix passes acceptance tests, it stores the failure→solution→verified-outcome record. Unconfirmed attempts are rejected from storage.",
+    "why_it_works": "It prevents the agent from re-deriving known solutions and, critically, prevents failed attempts from polluting future retrieval.",
+    "genesis_implementation": "Wire the memory module as a pre-step in the lab and hands modules: `recall(situation)` runs before any novel action, and `remember()` is only called with records that carry a passing test/verification artifact. Add a `confirmed: true/false` flag to the memory schema; retrieval ranks confirmed records first.",
+    "raw": "- **What it does:** Before attempting a fix, the agent searches a memory of\n  previously confirmed solutions; after a fix passes acceptance tests, it stores\n  the failure→solution→verified-outcome record. Unconfirmed attempts are rejected\n  from storage.\n- **Why it works:** It prevents the agent from re-deriving known solutions and,\n  critically, prevents failed attempts from polluting future retrieval.\n- **GENESIS implementation:** Wire the memory module as a pre-step in the lab\n  and hands modules: `recall(situation)` runs before any novel action, and\n  `remember()` is only called with records that carry a passing test/verification\n  artifact. Add a `confirmed: true/false` flag to the memory schema; retrieval\n  ranks confirmed records first.",
+    "modules": [
+     "hands",
+     "lab",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Effort Settings (explicit compute budget per task)",
+    "what_it_does": "Tasks run at a declared effort level (low/medium/high/xhigh/ max); higher effort buys more reasoning and retries at higher cost. Published data shows the score/cost curve explicitly (e.g., OSWorld partial scores from 62.2%/$2.55 at low to 73.5%/$9.07 at max).",
+    "why_it_works": "It makes the cost/quality tradeoff a deliberate choice instead of an accident, and it prevents cheap tasks from burning flagship compute.",
+    "genesis_implementation": "Add `effort` to the scheduler's job schema and to the hands module's execution policy. Default to low/medium; escalate to high only on verify-failures or when the father explicitly requests it. Surface estimated cost in the job's pre-execution report.",
+    "raw": "- **What it does:** Tasks run at a declared effort level (low/medium/high/xhigh/\n  max); higher effort buys more reasoning and retries at higher cost. Published\n  data shows the score/cost curve explicitly (e.g., OSWorld partial scores from\n  62.2%/$2.55 at low to 73.5%/$9.07 at max).\n- **Why it works:** It makes the cost/quality tradeoff a deliberate choice\n  instead of an accident, and it prevents cheap tasks from burning flagship\n  compute.\n- **GENESIS implementation:** Add `effort` to the scheduler's job schema and to\n  the hands module's execution policy. Default to low/medium; escalate to high\n  only on verify-failures or when the father explicitly requests it. Surface\n  estimated cost in the job's pre-execution report.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Self-Recovery From Small Mistakes",
+    "what_it_does": "The agent detects minor deviations (wrong tab, mistyped field) and corrects them autonomously instead of asking the user.",
+    "why_it_works": "Interrupting the human for every micro-error destroys the value proposition of autonomy; most errors are cheap to fix and expensive to escalate.",
+    "genesis_implementation": "Classify errors in the hands module by recovery cost: auto-recover (reversible, cheap), ask (irreversible or ambiguous), abort (safety-relevant). The verify step (T-01) is what detects the deviation; the classifier decides the response.",
+    "raw": "- **What it does:** The agent detects minor deviations (wrong tab, mistyped\n  field) and corrects them autonomously instead of asking the user.\n- **Why it works:** Interrupting the human for every micro-error destroys the\n  value proposition of autonomy; most errors are cheap to fix and expensive to\n  escalate.\n- **GENESIS implementation:** Classify errors in the hands module by recovery\n  cost: auto-recover (reversible, cheap), ask (irreversible or ambiguous),\n  abort (safety-relevant). The verify step (T-01) is what detects the\n  deviation; the classifier decides the response.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Approval Gates for Irreversible Actions",
+    "what_it_does": "Sensitive actions (purchases on saved cards, permanent deletion, new security-sensitive access, password changes, money transfers) require explicit human sign-off; some are handed back to the owner entirely.",
+    "why_it_works": "It bounds the blast radius of autonomy. The agent is fast and tireless; the human is the circuit breaker for the 1% of actions that cannot be undone.",
+    "genesis_implementation": "This already exists in the hands permission_gate — strengthen it with an explicit irreversibility taxonomy and a mandatory father-approval queue for the top tier. No silent escalation: a denied action must be reported with the reason, not retried.",
+    "raw": "- **What it does:** Sensitive actions (purchases on saved cards, permanent\n  deletion, new security-sensitive access, password changes, money transfers)\n  require explicit human sign-off; some are handed back to the owner entirely.\n- **Why it works:** It bounds the blast radius of autonomy. The agent is fast\n  and tireless; the human is the circuit breaker for the 1% of actions that\n  cannot be undone.\n- **GENESIS implementation:** This already exists in the hands permission_gate —\n  strengthen it with an explicit irreversibility taxonomy and a mandatory\n  father-approval queue for the top tier. No silent escalation: a denied action\n  must be reported with the reason, not retried.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Token-Efficient Reasoning (fewer tokens, same outcome)",
+    "what_it_does": "The model reportedly uses roughly one-third the tokens of its predecessor per coding task, making it cheaper per completed task despite a higher per-token price.",
+    "why_it_works": "Verbose reasoning is a cost center. Concise internal representation + decisive action beats long deliberation on routine steps.",
+    "genesis_implementation": "Add a token budget to the lab and hands modules' reasoning phases; measure tokens-per-completed-task as a KPI. Prefer short structured observations over narrative logs in the step trace. --- ## Benchmark signals (what they tell us) | Benchmark | Astra (vendor-reported) | Signal for GENESIS | |---|---|---| | OSWorld 2.0 | 72.6%, ~40 min/task | Computer-use is viable but slow; our eyes+hands loop must beat 40 min/task to be competitive | | ScreenSpot-Pro | 92.7% | Grounding accuracy is the #1 lever — invest here first | | Terminal-Bench 4.0 | 57.9% | Terminal work is still hard; lab module needs its own verify loop | | ARC-AGI-3 | 62.7% (independent) vs 98.6%+ (vendor) | Never trust vendor numbers; independent re-review only (our LAW-050) | | ExploitBench | 100% / Critical tier | Offensive capability must stay OUT of our modules; defensive patterns only | ## Sources - OpenAI launch briefing coverage (VentureBeat via witho2.com, Sept 2026) - OpenAI Dots announcement (Sept 29, 2026) — gadgetsnow.indiatimes.com, testingcatalog.com, testmuai.com - Benchmark compilations — guru99.com, aistockwire.com, ramthamedia.com, alphacorp.ai, kingy.ai, orcarouter.ai - Developer build report (codebase-memory agent loop) — dev.to - Computer-use research notes — github.com/jccrump/openbot docs - Safety reporting — techtimes.com, siliconangle.com, orca-ai-incident-archive (GitHub) - Deployment analysis — medium.com (surajkhaitan16), dextralabs.com, radintel.ai All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** The model reportedly uses roughly one-third the tokens of\n  its predecessor per coding task, making it cheaper per completed task despite\n  a higher per-token price.\n- **Why it works:** Verbose reasoning is a cost center. Concise internal\n  representation + decisive action beats long deliberation on routine steps.\n- **GENESIS implementation:** Add a token budget to the lab and hands modules'\n  reasoning phases; measure tokens-per-completed-task as a KPI. Prefer short\n  structured observations over narrative logs in the step trace.\n\n---\n\n## Benchmark signals (what they tell us)\n\n| Benchmark | Astra (vendor-reported) | Signal for GENESIS |\n|---|---|---|\n| OSWorld 2.0 | 72.6%, ~40 min/task | Computer-use is viable but slow; our eyes+hands loop must beat 40 min/task to be competitive |\n| ScreenSpot-Pro | 92.7% | Grounding accuracy is the #1 lever — invest here first |\n| Terminal-Bench 4.0 | 57.9% | Terminal work is still hard; lab module needs its own verify loop |\n| ARC-AGI-3 | 62.7% (independent) vs 98.6%+ (vendor) | Never trust vendor numbers; independent re-review only (our LAW-050) |\n| ExploitBench | 100% / Critical tier | Offensive capability must stay OUT of our modules; defensive patterns only |\n\n## Sources\n\n- OpenAI launch briefing coverage (VentureBeat via witho2.com, Sept 2026)\n- OpenAI Dots announcement (Sept 29, 2026) — gadgetsnow.indiatimes.com, testingcatalog.com, testmuai.com\n- Benchmark compilations — guru99.com, aistockwire.com, ramthamedia.com, alphacorp.ai, kingy.ai, orcarouter.ai\n- Developer build report (codebase-memory agent loop) — dev.to\n- Computer-use research notes — github.com/jccrump/openbot docs\n- Safety reporting — techtimes.com, siliconangle.com, orca-ai-incident-archive (GitHub)\n- Deployment analysis — medium.com (surajkhaitan16), dextralabs.com, radintel.ai\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Goal-First Delegation",
+    "use_when": "handing any multi-step job to GENESIS.",
+    "pattern": "State the OUTCOME, not the method. Never prescribe the steps.",
+    "template": " > Goal: <concrete, verifiable outcome>. > Constraints: <budget, tools allowed, things to never touch>. > Done means: <how you will check it>. > Work until done or blocked; report blockers with evidence.",
+    "raw": "- **Use when:** handing any multi-step job to GENESIS.\n- **Pattern:** State the OUTCOME, not the method. Never prescribe the steps.\n- **Template:**\n  > Goal: <concrete, verifiable outcome>.\n  > Constraints: <budget, tools allowed, things to never touch>.\n  > Done means: <how you will check it>.\n  > Work until done or blocked; report blockers with evidence.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Deliverable-Proof Requirement",
+    "use_when": "the job must produce something checkable.",
+    "pattern": "Require the agent to produce proof of completion, not a claim.",
+    "template": " > Along with the result, deliver proof: <test output / screenshot / file hash / > live link>. A result without proof is not done.",
+    "raw": "- **Use when:** the job must produce something checkable.\n- **Pattern:** Require the agent to produce proof of completion, not a claim.\n- **Template:**\n  > Along with the result, deliver proof: <test output / screenshot / file hash /\n  > live link>. A result without proof is not done.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Approval-Gate Framing",
+    "use_when": "the job may touch irreversible actions.",
+    "pattern": "Name the gate classes up front so the agent self-regulates.",
+    "template": " > You may act freely on: <reversible list>. > You must ask before: <purchases, deletions, permission changes, external sends>. > You must never: <credential access, destructive ops, anything outside the task>. > Awaiting approval is a valid state — report what you need, then wait.",
+    "raw": "- **Use when:** the job may touch irreversible actions.\n- **Pattern:** Name the gate classes up front so the agent self-regulates.\n- **Template:**\n  > You may act freely on: <reversible list>.\n  > You must ask before: <purchases, deletions, permission changes, external sends>.\n  > You must never: <credential access, destructive ops, anything outside the task>.\n  > Awaiting approval is a valid state — report what you need, then wait.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Effort Scoping",
+    "use_when": "cost or time matters.",
+    "pattern": "Give an explicit budget; tie escalation to evidence.",
+    "template": " > Effort budget: <low | medium | high> — roughly <N> steps / <M> tokens. > Escalate to the next level only if verification fails twice with evidence. > Report spend when you finish.",
+    "raw": "- **Use when:** cost or time matters.\n- **Pattern:** Give an explicit budget; tie escalation to evidence.\n- **Template:**\n  > Effort budget: <low | medium | high> — roughly <N> steps / <M> tokens.\n  > Escalate to the next level only if verification fails twice with evidence.\n  > Report spend when you finish.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-08",
+    "title": "Observe-Verify After Every Action",
+    "use_when": "driving the hands/eyes loop on a real machine.",
+    "pattern": "No action is complete until its effect is observed.",
+    "template": " > After every action, capture the new state and compare it to the expected > state. If they differ: classify (auto-fix / ask / abort) and act accordingly. > Never chain two actions on an unverified state.",
+    "raw": "- **Use when:** driving the hands/eyes loop on a real machine.\n- **Pattern:** No action is complete until its effect is observed.\n- **Template:**\n  > After every action, capture the new state and compare it to the expected\n  > state. If they differ: classify (auto-fix / ask / abort) and act accordingly.\n  > Never chain two actions on an unverified state.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Full Task Lifecycle (goal → deliver)",
+    "body": "The master workflow. Every GENESIS job follows it.\n\n1. **INTAKE** — Receive goal (P-01), constraints (P-06), budget (P-07).\n   Exit: goal is concrete and verifiable; otherwise ask one clarifying question.\n2. **RESEARCH** — Consult memory (P-03); gather external facts if needed.\n   Exit: plan inputs collected or declared unavailable.\n3. **PLAN** — Decompose into steps, each with expected state + verify method.\n   Exit: written plan with per-step verification.\n4. **EXECUTE** — Run the closed loop per step (T-01): observe → interpret →\n   act → verify. Auto-recover small errors (T-10); escalate per gate class.\n   Exit: all steps verified, or blocked with evidence.\n5. **REVIEW** — Independent check against the goal (our LAW-050 merciless\n   review): does the result match \"done means\"? Exit: PASS or fix-list.\n6. **DELIVER** — Result + proof artifact (P-02) + spend report (P-07) +\n   confirmed learnings to memory (P-04). Exit: father sees only the finished\n   outcome.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "synthesia": {
+  "techniques": [
+   {
+    "id": "T-03",
+    "title": "Live-Consent Identity Gate (consent that cannot be uploaded)",
+    "what_it_does": "Creating a personal avatar requires a live on-camera consent recording. It cannot be skipped, pre-recorded, or uploaded by someone else: the person in the consent video must match the person in the avatar footage, and the subject must be 18+. For colleagues, the subject receives a unique link and completes recording + consent themselves, without needing a platform account.",
+    "why_it_works": "Consent is captured as a verifiable artifact at the moment of highest leverage — before the identity exists — instead of an after-the-fact checkbox. This is stricter than a typed acknowledgment and blocks identity misuse at the source.",
+    "genesis_implementation": "Wire consent capture into the avatar host's enrollment flow as a hard gate: no consent artifact → no training, no exceptions. The artifact records subject identity, timestamp, and a face-match check between consent footage and enrollment footage. This is our anti-impersonation law in code.",
+    "raw": "- **What it does:** Creating a personal avatar requires a live on-camera\n  consent recording. It cannot be skipped, pre-recorded, or uploaded by\n  someone else: the person in the consent video must match the person in the\n  avatar footage, and the subject must be 18+. For colleagues, the subject\n  receives a unique link and completes recording + consent themselves, without\n  needing a platform account.\n- **Why it works:** Consent is captured as a verifiable artifact at the\n  moment of highest leverage — before the identity exists — instead of an\n  after-the-fact checkbox. This is stricter than a typed acknowledgment and\n  blocks identity misuse at the source.\n- **GENESIS implementation:** Wire consent capture into the avatar host's\n  enrollment flow as a hard gate: no consent artifact → no training, no\n  exceptions. The artifact records subject identity, timestamp, and a\n  face-match check between consent footage and enrollment footage. This is\n  our anti-impersonation law in code.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-12",
+    "title": "Content-Moderation Render Gate (every video, before delivery)",
+    "what_it_does": "Every generated video passes through content moderation before delivery. Scripts are held to professional/business standards — political, sexual, personal, criminal and discriminatory content are refused. Independent testers report render times of ~4–5 minutes for a short video, noticeably slower than HeyGen's ~1 minute, with the moderation step as a contributing factor.",
+    "why_it_works": "For enterprise scale, trust is a feature. The moderation gate converts a brand-risk problem into a workflow step, and the render latency is the honest price of it. It also explains the platform's design posture: slower but governance-grade, versus HeyGen's faster but looser.",
+    "genesis_implementation": "The publish governor (our breaking-news-style gate) should include a moderation stage for any generated media: script policy check → render → automated anomaly check → human review queue for flagged items. Accept explicit render latency for governed paths; keep a separate draft tier with lighter checks for internal previews.",
+    "raw": "- **What it does:** Every generated video passes through content moderation\n  before delivery. Scripts are held to professional/business standards —\n  political, sexual, personal, criminal and discriminatory content are\n  refused. Independent testers report render times of ~4–5 minutes for a\n  short video, noticeably slower than HeyGen's ~1 minute, with the moderation\n  step as a contributing factor.\n- **Why it works:** For enterprise scale, trust is a feature. The moderation\n  gate converts a brand-risk problem into a workflow step, and the render\n  latency is the honest price of it. It also explains the platform's design\n  posture: slower but governance-grade, versus HeyGen's faster but looser.\n- **GENESIS implementation:** The publish governor (our breaking-news-style\n  gate) should include a moderation stage for any generated media: script\n  policy check → render → automated anomaly check → human review queue for\n  flagged items. Accept explicit render latency for governed paths; keep a\n  separate draft tier with lighter checks for internal previews.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-10",
+    "title": "Consent-Safe Identity Brief",
+    "use_when": "any video uses a real person's likeness.",
+    "pattern": "The likeness brief carries its consent artifact: who the person is, what uses are permitted, and where the consent record lives. No consent reference → no render.",
+    "template": " > Identity: <name>, source footage <ref>, consent record <ref>, > permitted uses: <internal training | marketing | all>. > Expiry: <date or \"until revoked\">. Revocation re-renders or retires > affected videos. --- ## Composition rule — Master-Script-First Every video in the GENESIS avatar pipeline descends from a **versioned master**: one script + one scene manifest + one brand profile + one glossary. All outputs — translations, dubs, personalized variants, embeds — are *derived renders* of the master, never independent artifacts. A change to the master re-triggers its dependents with a change log (T-09); a render without a master reference is an orphan and is not shippable. Long, literal manifests beat clever one-liners: every specified detail (camera, layout, pronunciation, exclusion) is a decision the renderer no longer improvises. Voice-synthesis wording in this file is GENESIS product-capability knowledge only. The NO AI VOICE LAW stays enforced at the publish gate: the 369 publish path refuses AI-voice renders even if the capability exists.",
+    "raw": "- **Use when:** any video uses a real person's likeness.\n- **Pattern:** The likeness brief carries its consent artifact: who the\n  person is, what uses are permitted, and where the consent record lives.\n  No consent reference → no render.\n- **Template:**\n  > Identity: <name>, source footage <ref>, consent record <ref>,\n  > permitted uses: <internal training | marketing | all>.\n  > Expiry: <date or \"until revoked\">. Revocation re-renders or retires\n  > affected videos.\n\n---\n\n## Composition rule — Master-Script-First\n\nEvery video in the GENESIS avatar pipeline descends from a **versioned\nmaster**: one script + one scene manifest + one brand profile + one\nglossary. All outputs — translations, dubs, personalized variants, embeds —\nare *derived renders* of the master, never independent artifacts. A change\nto the master re-triggers its dependents with a change log (T-09); a render\nwithout a master reference is an orphan and is not shippable. Long, literal\nmanifests beat clever one-liners: every specified detail (camera, layout,\npronunciation, exclusion) is a decision the renderer no longer improvises.\n\nVoice-synthesis wording in this file is GENESIS product-capability\nknowledge only. The NO AI VOICE LAW stays enforced at the publish gate:\nthe 369 publish path refuses AI-voice renders even if the capability exists.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Script-to-Video Lifecycle (the master workflow)",
+    "body": "The canonical production path. Every avatar video job follows it.\n\n1. **INTAKE** — Receive the brief: audience, outcome, source script or\n   document. Entry: brief names the audience and the one thing the viewer\n   must know after. Exit: scope written down, or one clarifying question.\n2. **CAST** — Select avatar + voice persona (P-03), aspect ratio, brand\n   profile. Entry: brief approved. Exit: test-render probe of 1–2 slides\n   approved (P-08); otherwise re-cast.\n3. **BUILD** — Author the scene manifest: slides with per-slide beats\n   (P-01), glossary declared (P-04), layout locked.\n   Exit: manifest passes schema validation (variables named, fallbacks set).\n4. **PREVIEW** — Watermarked probe render of the full manifest.\n   Exit: pacing check (≥3s per on-screen text), layout on target aspect\n   ratio, hard-word pronunciation passes; fix-list otherwise.\n5. **MODERATE** — Script policy gate (T-12): business-appropriate content\n   only; flagged items to a human review queue.\n   Exit: PASS, or rejected with the specific policy reason.\n6. **RENDER** — Final generation, async with status poll (T-08).\n   Exit: file produced, hash recorded, provenance envelope attached (T-13).\n7. **PUBLISH** — Deliver as link/embed/package with version id; master\n   registered for living-document updates (T-09).\n   Exit: published copy is a *derived render* of the registered master.\n\n**Guarded failure modes:** lip-sync glitch on fast dialogue → re-render the\naffected scene only (never the whole video blind); moderation rejection →\nthe job stops with the reason, never proceeds silently; deleted identity\nreferenced → substitute must be re-cast, dependents flagged for re-render.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "elevenlabs": {
+  "techniques": [
+   {
+    "id": "T-09",
+    "title": "Consent + Identity Gates Before Any Cloning",
+    "what_it_does": "Cloning requires consent verification — the uploader confirms rights/permissions. Professional Voice Cloning adds a stricter identity gate: only the speaker themselves can create and verify their own professional clone, even with third-party permission; only after they verify can they share access. Clones of some political figures are blocked outright.",
+    "why_it_works": "It makes voice a first-class identity asset, not data. The gate is at creation time, before any model training — the cheapest point to stop abuse.",
+    "genesis_implementation": "Voice module cloning entry requires a recorded spoken-consent phrase from the speaker, stored with the voice record. PVC-grade fine-tuning is available ONLY for the father's own voice, gated by his explicit per-case approval. This gate must be code-enforced (permission_gate pattern, hands), never UI-only.",
+    "raw": "- **What it does:** Cloning requires consent verification — the uploader\n  confirms rights/permissions. Professional Voice Cloning adds a stricter\n  identity gate: only the speaker themselves can create and verify their own\n  professional clone, even with third-party permission; only after they verify\n  can they share access. Clones of some political figures are blocked outright.\n- **Why it works:** It makes voice a first-class identity asset, not data.\n  The gate is at creation time, before any model training — the cheapest\n  point to stop abuse.\n- **GENESIS implementation:** Voice module cloning entry requires a recorded\n  spoken-consent phrase from the speaker, stored with the voice record.\n  PVC-grade fine-tuning is available ONLY for the father's own voice, gated by\n  his explicit per-case approval. This gate must be code-enforced\n  (permission_gate pattern, hands), never UI-only.",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Voice Enrollment (cloning the father's voice)",
+    "body": "The identity-gated onboarding for the one voice GENESIS will speak with.\n\n1. **CONSENT** — The father records a spoken consent phrase (his voice,\n   his words, naming the purpose). Stored with timestamp; required before\n   anything else. Entry: explicit request to enroll a voice. Exit: consent\n   recording exists, or the workflow stops (fail-closed).\n2. **SAMPLE** — Record enrollment audio: 1–2 minutes of natural speech,\n   one microphone, one room, consistent energy — varied pace, questions and\n   statements. More material is NOT better; consistency beats quantity.\n   Entry: consent on file. Exit: single-speaker, clean sample (no overlap,\n   no background noise), or re-record.\n3. **ENROLL** — Encoder extracts the speaker embedding; the voice record is\n   created with tier=instant, consent reference, and source-consistency\n   metadata. Exit: voice_id usable in any TTS call immediately.\n4. **VERIFY** — Generate 3 test phrases (greeting, name of father, one\n   acronym like \"YPP\"); the father listens and approves. Exit: father\n   approval, or return to SAMPLE with notes.\n5. **PROMOTE (optional, deep tier)** — If instant fidelity is insufficient\n   for daily use: 30+ minutes of clean audio, fine-tuning run (hours),\n   father's explicit per-case approval. Exit: tier=professional,\n   QC'd on a long passage before activation.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Cloning someone else's voice | Consent recording is the speaker's own voice; mismatch = abort |\n| Bad sample → bad clone forever | VERIFY stage listens before any real use |\n| Voice used beyond consent scope | Consent names the purpose; new purpose = new consent |",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "fishaudio": {
+  "techniques": [
+   {
+    "id": "T-08",
+    "title": "Streaming With ~90 ms Time-to-First-Audio + Latency Tiers",
+    "what_it_does": "The API reports roughly 90 ms time-to-first-audio on the standard endpoint (~70 ms on a single request) with selectable latency modes: normal (best quality) vs. balanced (~300 ms) for real-time use. Streaming works over HTTP chunks and WebSocket.",
+    "why_it_works": "Conversational voice lives or dies on first-chunk latency. A two-tier latency contract lets the caller choose quality for narration and speed for dialogue instead of paying one mode's cost for the other's job.",
+    "genesis_implementation": "The conversational voice path must expose `latency: normal | balanced` per request, stream audio in chunks, and target sub-500 ms first-audio on-device. Latency budget is a logged KPI per session (see W-03).",
+    "raw": "- **What it does:** The API reports roughly 90 ms time-to-first-audio on the\n  standard endpoint (~70 ms on a single request) with selectable latency\n  modes: normal (best quality) vs. balanced (~300 ms) for real-time use.\n  Streaming works over HTTP chunks and WebSocket.\n- **Why it works:** Conversational voice lives or dies on first-chunk\n  latency. A two-tier latency contract lets the caller choose quality for\n  narration and speed for dialogue instead of paying one mode's cost for\n  the other's job.\n- **GENESIS implementation:** The conversational voice path must expose\n  `latency: normal | balanced` per request, stream audio in chunks, and\n  target sub-500 ms first-audio on-device. Latency budget is a logged KPI\n  per session (see W-03).",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Voice Enrollment (cloning the father's voice)",
+    "body": "The identity-gated onboarding for the one voice GENESIS will speak with.\nLocal/self-hosted path preferred (T-13).\n\n1. **CONSENT** — The father records a spoken consent phrase (his voice, his\n   words, naming the purpose: personal assistant). Stored with timestamp;\n   required before anything else. Entry: explicit request to enroll a\n   voice. Exit: consent recording exists, or the workflow stops\n   (fail-closed).\n2. **SAMPLE** — Record enrollment audio: 15–30 seconds of natural speech\n   (P-05), one microphone, one room, consistent energy; transcribed\n   verbatim; trimmed to the last complete sentence. Entry: consent on file.\n   Exit: single-speaker, clean sample (no overlap, no background noise, no\n   music), or re-record.\n3. **REGISTER** — Encoder extracts reference tokens; the voice record is\n   created with tier=instant, consent reference, scope, and\n   visibility=private (P-07). Exit: voice_id usable in any TTS call\n   immediately.\n4. **VERIFY** — Generate 3 test phrases (greeting, father's name, one\n   acronym like \"YPP\"); the father listens and approves. Entry: registered\n   voice_id. Exit: father approval, or return to SAMPLE with notes.\n5. **PROMOTE (optional, deep tier)** — If instant fidelity is insufficient\n   for daily use: longer clean session, trained clone, father's explicit\n   per-case approval. Exit: tier=trained, QC'd on a long passage before\n   activation.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Cloning someone else's voice | Consent recording IS the speaker's voice; mismatch = abort |\n| Bad sample → bad clone forever | VERIFY stage listens before any real use |\n| Voice shared publicly by default | Visibility defaults to private; public is an explicit logged opt-in |\n| Enrollment data leaves the device | Local path default; cloud fallback needs father's per-case approval |\n| Voice used beyond consent scope | Consent names the purpose; new purpose = new consent |",
+    "modules": [
+     "hands",
+     "station",
+     "voice"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Live Conversational Loop (streaming dialogue)",
+    "body": "The real-time voice path: the father speaks, GENESIS answers aloud with\nlow latency.\n\n1. **LISTEN** — Capture the father's utterance (wakeword module hands off\n   the turn). Entry: turn detected. Exit: audio chunk stream + end-of-turn\n   signal.\n2. **THINK** — Language model produces the reply text + a brief direction\n   (tone of the reply). Entry: end-of-turn. Exit: reply text + direction,\n   within the think budget.\n3. **STREAM** — Render with `latency: balanced` (T-08), stream chunks as\n   they arrive, target sub-500 ms time-to-first-audio. Entry: reply text\n   ready. Exit: first chunk playing, or fallback escalation.\n4. **TURN-TAKE** — Handle interruption: if the father speaks mid-reply,\n   stop the stream, keep the cutoff transcript, and return to LISTEN with\n   context preserved. Entry: new speech while streaming. Exit: clean stop\n   + resume state.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Latency blows the conversational budget | Latency tier logged per turn; persistent misses escalate to shorter replies |\n| Interruption loses the thread | Cutoff transcript is retained; next turn continues, not restarts |\n| Render fails mid-stream | Fallback: finish the turn as text (chat), never as silence |\n| Streaming cost spikes | Balanced-tier only for live turns; narration uses normal-tier (W-02) |",
+    "modules": [
+     "hands",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "higgsfield": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Named Camera-Preset Direction Language (the \"director's toolkit\")",
+    "what_it_does": "Camera movement is expressed as a fixed vocabulary of 50–70 named presets (Dolly In/Out/Left/Right, Super Dolly, Dolly Zoom, Crash Zoom, Crane Up/Down/Over-Head, Whip Pan, Arc Left/Right, 360 Orbit, Bullet Time, Aerial Pullback, FPV Drone, Handheld, Head Tracking, Snorricam, Hyperlapse, Timelapse, Dutch Angle, Fisheye, Through Object, Static, etc.) instead of free prose. The preset is a control token attached at the prompt stage; the generation model then executes it with real-lens physics.",
+    "why_it_works": "Free prose like \"a cool camera move\" is ambiguous; the diffusion model must guess what you meant. A named preset maps to a trained motion pattern, so \"Crash Zoom\" behaves like a crash zoom every time. It also lets the same camera language be reused across shots and across models (a dolly defined once applies in Cinema Studio regardless of which base model renders the shot).",
+    "genesis_implementation": "In the hands/lab generation modules, keep a fixed `CAMERA_PRESETS` registry (name → parameter description) as part of our own prompt-skill library. Any job that asks for a video-generation prompt must select a preset by name rather than describing motion in free text; the scheduler validates the preset name against the registry before spending budget. Same idea serves the 369 content team's brief grammar for reels (director words instead of adjectives).",
+    "raw": "- **What it does:** Camera movement is expressed as a fixed vocabulary of\n  50–70 named presets (Dolly In/Out/Left/Right, Super Dolly, Dolly Zoom,\n  Crash Zoom, Crane Up/Down/Over-Head, Whip Pan, Arc Left/Right, 360 Orbit,\n  Bullet Time, Aerial Pullback, FPV Drone, Handheld, Head Tracking, Snorricam,\n  Hyperlapse, Timelapse, Dutch Angle, Fisheye, Through Object, Static, etc.)\n  instead of free prose. The preset is a control token attached at the prompt\n  stage; the generation model then executes it with real-lens physics.\n- **Why it works:** Free prose like \"a cool camera move\" is ambiguous; the\n  diffusion model must guess what you meant. A named preset maps to a trained\n  motion pattern, so \"Crash Zoom\" behaves like a crash zoom every time. It\n  also lets the same camera language be reused across shots and across models\n  (a dolly defined once applies in Cinema Studio regardless of which base\n  model renders the shot).\n- **GENESIS implementation:** In the hands/lab generation modules, keep a\n  fixed `CAMERA_PRESETS` registry (name → parameter description) as part of\n  our own prompt-skill library. Any job that asks for a video-generation\n  prompt must select a preset by name rather than describing motion in free\n  text; the scheduler validates the preset name against the registry before\n  spending budget. Same idea serves the 369 content team's brief grammar for\n  reels (director words instead of adjectives).",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Identity-vs-Motion Prompt Separation (the anti-drift rule)",
+    "what_it_does": "When character consistency matters, the prompt is split into two labeled blocks. The IDENTITY block carries static visual descriptors ONLY (face features, skin tone, body type, clothing, accessories, palette) — no motion, no camera, no temporal language. The MOTION block carries temporal/camera ONLY (action choreography, camera movement, environmental motion) — no character-appearance repetition.",
+    "why_it_works": "Interleaving identity descriptors with motion tokens makes the model re-interpret the face while processing motion, so the face drifts frame to frame. Separation removes the interference; the identity description is applied once, motion applies after.",
+    "genesis_implementation": "Encode this as a schema rule in our prompt library: any prompt containing a character reference must have separate `identity` and `motion` fields (validator rejects mixed blocks). This is a generalizable pattern beyond video — apply the same static/dynamic split to any generative asset (avatars, thumbnails, series covers) where a repeated identity must survive variation.",
+    "raw": "- **What it does:** When character consistency matters, the prompt is split\n  into two labeled blocks. The IDENTITY block carries static visual\n  descriptors ONLY (face features, skin tone, body type, clothing,\n  accessories, palette) — no motion, no camera, no temporal language. The\n  MOTION block carries temporal/camera ONLY (action choreography, camera\n  movement, environmental motion) — no character-appearance repetition.\n- **Why it works:** Interleaving identity descriptors with motion tokens makes\n  the model re-interpret the face while processing motion, so the face drifts\n  frame to frame. Separation removes the interference; the identity\n  description is applied once, motion applies after.\n- **GENESIS implementation:** Encode this as a schema rule in our prompt\n  library: any prompt containing a character reference must have separate\n  `identity` and `motion` fields (validator rejects mixed blocks). This is a\n  generalizable pattern beyond video — apply the same static/dynamic split to\n  any generative asset (avatars, thumbnails, series covers) where a repeated\n  identity must survive variation.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Magic Pills: Control-Word Injection",
+    "what_it_does": "Instead of asking the user to write perfect prose, the system appends (\"injects\") camera, framing, and lighting words into the prompt automatically from selections (\"Magic Pills\"). The user picks structured options; the prompt gets deterministic vocabulary appended.",
+    "why_it_works": "It removes prompt-engineering skill as a bottleneck. The structured picker guarantees the words the model responds to are actually present; users can't forget them.",
+    "genesis_implementation": "Replicate the mechanic, not the feature: in any GENESIS job that builds prompts (reels, covers, avatar renders), put a \"pill picker\" layer between the human brief and the final prompt. The picker exposes controlled vocabularies (camera, light, palette, texture); its output is appended verbatim. Log which pills were injected per asset so QC can trace aesthetic decisions.",
+    "raw": "- **What it does:** Instead of asking the user to write perfect prose, the\n  system appends (\"injects\") camera, framing, and lighting words into the\n  prompt automatically from selections (\"Magic Pills\"). The user picks\n  structured options; the prompt gets deterministic vocabulary appended.\n- **Why it works:** It removes prompt-engineering skill as a bottleneck. The\n  structured picker guarantees the words the model responds to are actually\n  present; users can't forget them.\n- **GENESIS implementation:** Replicate the mechanic, not the feature: in any\n  GENESIS job that builds prompts (reels, covers, avatar renders), put a\n  \"pill picker\" layer between the human brief and the final prompt. The picker\n  exposes controlled vocabularies (camera, light, palette, texture); its\n  output is appended verbatim. Log which pills were injected per asset so QC\n  can trace aesthetic decisions.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Hero Frame First (start-frame anchoring)",
+    "what_it_does": "The workflow is image-first: generate or select one strong still (the hero frame), then animate it (image-to-video) rather than generating motion from text alone. Attaching the first generated frame as a reference for subsequent shots costs little and measurably raises likeness; an optional end frame pins the clip's destination.",
+    "why_it_works": "A text prompt describes a distribution; a frame is a fixed target. Motion synthesis conditioned on a fixed frame preserves what matters (face, product, composition) and only invents the movement.",
+    "genesis_implementation": "Hard-order the asset pipeline in lab/hands: no image-to-video job runs without a locked hero frame artifact on disk; the QC gate opens the frame, not the prompt, first. For series work, the hero frame of shot N-1 becomes the start frame of shot N (end-to-start chaining), which is the cheap version of multi-shot continuity.",
+    "raw": "- **What it does:** The workflow is image-first: generate or select one strong\n  still (the hero frame), then animate it (image-to-video) rather than\n  generating motion from text alone. Attaching the first generated frame as a\n  reference for subsequent shots costs little and measurably raises likeness;\n  an optional end frame pins the clip's destination.\n- **Why it works:** A text prompt describes a distribution; a frame is a\n  fixed target. Motion synthesis conditioned on a fixed frame preserves what\n  matters (face, product, composition) and only invents the movement.\n- **GENESIS implementation:** Hard-order the asset pipeline in lab/hands:\n  no image-to-video job runs without a locked hero frame artifact on disk;\n  the QC gate opens the frame, not the prompt, first. For series work, the\n  hero frame of shot N-1 becomes the start frame of shot N (end-to-start\n  chaining), which is the cheap version of multi-shot continuity.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Multi-Shot Stitching Pipeline (short clips → sequence)",
+    "what_it_does": "Single generations are short (5–15s depending on model). Longer scenes are built by rendering multiple sequential clips and stitching them: consistent camera language, lens, tempo, and color palette carried across clips; the series workflow compares each new episode against the original reference library, not just the previous episode.",
+    "why_it_works": "It acknowledges the hard limit instead of fighting it, and the \"compare against the original reference\" rule prevents gradual drift (each generation measured against episode 1, not against the already-drifted episode 2).",
+    "genesis_implementation": "The scheduler's long-video job type = ordered list of shot jobs + a global continuity manifest (camera language, palette, identity profile IDs). The QC gate for shot N compares against the manifest reference frames, never against shot N-1 alone. REEL TEXT-TIMING LAW alignment: shot duration budgeting follows the ≥3s-per-text rule for overlays.",
+    "raw": "- **What it does:** Single generations are short (5–15s depending on model).\n  Longer scenes are built by rendering multiple sequential clips and\n  stitching them: consistent camera language, lens, tempo, and color palette\n  carried across clips; the series workflow compares each new episode against\n  the original reference library, not just the previous episode.\n- **Why it works:** It acknowledges the hard limit instead of fighting it,\n  and the \"compare against the original reference\" rule prevents gradual\n  drift (each generation measured against episode 1, not against the\n  already-drifted episode 2).\n- **GENESIS implementation:** The scheduler's long-video job type = ordered\n  list of shot jobs + a global continuity manifest (camera language, palette,\n  identity profile IDs). The QC gate for shot N compares against the manifest\n  reference frames, never against shot N-1 alone. REEL TEXT-TIMING LAW\n  alignment: shot duration budgeting follows the ≥3s-per-text rule for\n  overlays.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Cost Visibility Before Generation (pre-spend disclosure)",
+    "what_it_does": "The Generate action displays the estimated credit cost of a generation BEFORE it runs; the agentic planner (Supercomputer) shows the full project cost before rendering. Users budget with real numbers, not after-the-fact invoices.",
+    "why_it_works": "Generation costs vary wildly by model, resolution, duration (reported figures: premium 1080p video up to ~9 credits/sec; a single frontier-model clip 40–70 credits). Pre-disclosure converts spending from a surprise into a decision — the exact mechanism our zero-spend discipline requires.",
+    "genesis_implementation": "Extend the scheduler's pre-execution report: every job that consumes a paid resource must carry `estimated_cost` and the hands module must refuse to run without an explicit or pre-authorized budget line. This is the enforcement surface for the father's zero-spend rule in code — cost shown, then spent, never the reverse.",
+    "raw": "- **What it does:** The Generate action displays the estimated credit cost of\n  a generation BEFORE it runs; the agentic planner (Supercomputer) shows the\n  full project cost before rendering. Users budget with real numbers, not\n  after-the-fact invoices.\n- **Why it works:** Generation costs vary wildly by model, resolution,\n  duration (reported figures: premium 1080p video up to ~9 credits/sec; a\n  single frontier-model clip 40–70 credits). Pre-disclosure converts spending\n  from a surprise into a decision — the exact mechanism our zero-spend\n  discipline requires.\n- **GENESIS implementation:** Extend the scheduler's pre-execution report:\n  every job that consumes a paid resource must carry `estimated_cost` and the\n  hands module must refuse to run without an explicit or pre-authorized\n  budget line. This is the enforcement surface for the father's zero-spend\n  rule in code — cost shown, then spent, never the reverse.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Moodboard Style Lock (Soul pattern)",
+    "what_it_does": "A Moodboard configuration defines the visual direction once (palette, texture, lighting mood); all generated locations, objects, and wardrobe are produced against it. Palettes travel as fixed HEX values across shots rather than descriptive prose.",
+    "why_it_works": "Descriptive style words (\"moody, premium\") drift between generations; fixed HEX values and a locked moodboard don't. It is the style-side twin of Soul ID's identity lock.",
+    "genesis_implementation": "Every GENESIS visual project carries a `style_manifest` (background HEX, accent HEX, texture words, lighting preset name from T-05's picker) committed before generation starts. This directly implements our own Best-Color-Combos system law: fixed skeleton, curated colors, recorded as data — not adjectives. QC compares delivered frames against the manifest HEXes.",
+    "raw": "- **What it does:** A Moodboard configuration defines the visual direction\n  once (palette, texture, lighting mood); all generated locations, objects,\n  and wardrobe are produced against it. Palettes travel as fixed HEX values\n  across shots rather than descriptive prose.\n- **Why it works:** Descriptive style words (\"moody, premium\") drift between\n  generations; fixed HEX values and a locked moodboard don't. It is the\n  style-side twin of Soul ID's identity lock.\n- **GENESIS implementation:** Every GENESIS visual project carries a\n  `style_manifest` (background HEX, accent HEX, texture words, lighting\n  preset name from T-05's picker) committed before generation starts. This\n  directly implements our own Best-Color-Combos system law: fixed skeleton,\n  curated colors, recorded as data — not adjectives. QC compares delivered\n  frames against the manifest HEXes.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Identity/Motion Split (the drift killer)",
+    "use_when": "any shot includes a recurring character, persona, or product.",
+    "pattern": "Never describe appearance and movement in the same sentence. Two labeled blocks: IDENTITY (static descriptors only) and MOTION (action + camera only). (From T-02.)",
+    "template": " > IDENTITY: <character reference ID or descriptor> — <face, build, clothing, > palette>. No motion described here. > MOTION: <what happens>. CAMERA: <preset name from T-01>. > ENVIRONMENT: <atmospheric motion only, e.g. rain falling, neon reflecting>. > No appearance descriptors repeated here.",
+    "raw": "- **Use when:** any shot includes a recurring character, persona, or product.\n- **Pattern:** Never describe appearance and movement in the same sentence.\n  Two labeled blocks: IDENTITY (static descriptors only) and MOTION\n  (action + camera only). (From T-02.)\n- **Template:**\n  > IDENTITY: <character reference ID or descriptor> — <face, build, clothing,\n  > palette>. No motion described here.\n  > MOTION: <what happens>. CAMERA: <preset name from T-01>.\n  > ENVIRONMENT: <atmospheric motion only, e.g. rain falling, neon reflecting>.\n  > No appearance descriptors repeated here.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Hero Frame First",
+    "use_when": "generating any clip where likeness or composition matters.",
+    "pattern": "Produce (or select) the still first; the video prompt then says only what MOVES, referencing the locked frame. (From T-06.)",
+    "template": " > STEP 1: Lock frame <file/id> as the hero frame. QC it: face correct, > product correct, composition correct. > STEP 2: Animate the frame. Motion prompt: \"<what moves and how>\". > Everything else is frozen as in the frame. Duration: <N>s. > Do not reinterpret anything visible in the frame.",
+    "raw": "- **Use when:** generating any clip where likeness or composition matters.\n- **Pattern:** Produce (or select) the still first; the video prompt then\n  says only what MOVES, referencing the locked frame. (From T-06.)\n- **Template:**\n  > STEP 1: Lock frame <file/id> as the hero frame. QC it: face correct,\n  > product correct, composition correct.\n  > STEP 2: Animate the frame. Motion prompt: \"<what moves and how>\".\n  > Everything else is frozen as in the frame. Duration: <N>s.\n  > Do not reinterpret anything visible in the frame.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Camera Preset Token",
+    "use_when": "specifying any camera movement.",
+    "pattern": "Use exactly one named preset from the registry; never describe the move in adjectives. Adjectives are banned from the camera field. (From T-01.)",
+    "template": " > CAMERA: <one preset name, e.g. \"Crash Zoom\", \"Aerial Pullback\">. > Speed: <slow/normal/fast>. No other camera words.",
+    "raw": "- **Use when:** specifying any camera movement.\n- **Pattern:** Use exactly one named preset from the registry; never describe\n  the move in adjectives. Adjectives are banned from the camera field.\n  (From T-01.)\n- **Template:**\n  > CAMERA: <one preset name, e.g. \"Crash Zoom\", \"Aerial Pullback\">.\n  > Speed: <slow/normal/fast>. No other camera words.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Style Manifest Lock",
+    "use_when": "starting any series, campaign, or multi-clip project.",
+    "pattern": "Commit the palette as fixed HEX values + one lighting preset + one texture word BEFORE generating shot 1. All shots reference the manifest, never descriptive style prose. (From T-13.)",
+    "template": " > STYLE MANIFEST (locked for project <name>): > Background: <#HEX>. Accent: <#HEX>. Lighting: <preset name>. > Texture: <one word>. Every shot matches these values.",
+    "raw": "- **Use when:** starting any series, campaign, or multi-clip project.\n- **Pattern:** Commit the palette as fixed HEX values + one lighting preset\n  + one texture word BEFORE generating shot 1. All shots reference the\n  manifest, never descriptive style prose. (From T-13.)\n- **Template:**\n  > STYLE MANIFEST (locked for project <name>):\n  > Background: <#HEX>. Accent: <#HEX>. Lighting: <preset name>.\n  > Texture: <one word>. Every shot matches these values.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "P-09",
+    "title": "Audio Track Spec",
+    "use_when": "the clip needs sound, music, or voiceover.",
+    "pattern": "Score the audio as a track with in/out points, not a vibe word. Music, effects, and voice are three separate lines.",
+    "template": " > AUDIO: Music: <genre/tempo>, enters at <time>, fades at <time>. > Effects: <diegetic sounds, e.g. footsteps on wet concrete>. > Voice: <script line or \"none\">. Sync voice to lip movement if a face > speaks.",
+    "raw": "- **Use when:** the clip needs sound, music, or voiceover.\n- **Pattern:** Score the audio as a track with in/out points, not a vibe\n  word. Music, effects, and voice are three separate lines.\n- **Template:**\n  > AUDIO: Music: <genre/tempo>, enters at <time>, fades at <time>.\n  > Effects: <diegetic sounds, e.g. footsteps on wet concrete>.\n  > Voice: <script line or \"none\">. Sync voice to lip movement if a face\n  > speaks.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Concept-to-Video Pipeline (idea → finished clip)",
+    "body": "The master production workflow for a single video asset.\n\n1. **BRIEF** — Write the brief in the nine-section schema (T-04), with the\n   style manifest (P-07) and continuity non-negotiables (P-08) filled.\n   Exit: brief is complete; a brief with an empty CONTINUITY section is\n   rejected, not debated.\n2. **ENGINE SELECT** — Choose primary engine + fallback order and record the\n   cost tier (T-10); compute the estimated cost and attach it to the job\n   (T-09).\n   Exit: engine plan + cost estimate committed before any spend.\n3. **HERO FRAME** — Generate/select the hero still (P-02).\n   Exit: frame QC'd and locked (face/product/composition correct).\n4. **GENERATE** — Animate via image-to-video with identity/motion split\n   (P-01), camera preset token (P-03), anatomy/physics specs (P-05, P-06),\n   audio spec (P-09).\n   Exit: clip artifact on disk.\n5. **QC** — Independent review against the brief: identity match, camera\n   move correct, continuity holds, no anatomy artifacts, ≥3s text timing for\n   overlays (REEL TEXT-TIMING LAW), anti-AI-slop check (LAW-149).\n   Exit: PASS, or a scoped repair list (go to W-03), or engine-fallback (go to\n   W-04).\n6. **DELIVER** — Clip + hero frame + brief + pill log + spend report to the\n   caller (369 content team or father review).\n\n**Guarded failure modes:**\n- Engine returns anatomy artifacts → repair lane (W-03) with preserve list,\n  max 2 repair rounds; if still failing, fallback engine (W-04).\n- Cost estimate exceeds authorized budget → STOP, report to father; never\n  auto-escalate spend.\n- QC fails 3 consecutive generations → escalate to human director with the\n  three failed artifacts side by side; do not keep burning credits.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "flow": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Ingredients: Train-Once Reference Anchoring",
+    "what_it_does": "Upload up to 3 reference images (character, object, background) that the model anchors to for every subsequent generation. A subject created once can be reused across different clips and scenes with consistency. Google recommends plain/segmented backgrounds on references.",
+    "why_it_works": "It converts the consistency problem from \"re-describe the face in every prompt\" (which drifts) into \"point at the same pixels each time.\" One canonical source of truth replaces N independent descriptions.",
+    "genesis_implementation": "In the generation job schema (lab/hands), support an `ingredients: [asset_id...]` field (max 3). Any job that renders a recurring character/subject across shots must attach ingredients instead of repeating prose. Store ingredients as versioned assets; jobs that omit them for recurring subjects are rejected by the pre-generation validator. Same pattern for 369: the team's visual identity references (page DNA moodboards) become ingredient-grade anchors for series covers and reels.",
+    "raw": "- **What it does:** Upload up to 3 reference images (character, object,\n  background) that the model anchors to for every subsequent generation. A\n  subject created once can be reused across different clips and scenes with\n  consistency. Google recommends plain/segmented backgrounds on references.\n- **Why it works:** It converts the consistency problem from \"re-describe the\n  face in every prompt\" (which drifts) into \"point at the same pixels each\n  time.\" One canonical source of truth replaces N independent descriptions.\n- **GENESIS implementation:** In the generation job schema (lab/hands),\n  support an `ingredients: [asset_id...]` field (max 3). Any job that renders\n  a recurring character/subject across shots must attach ingredients instead\n  of repeating prose. Store ingredients as versioned assets; jobs that omit\n  them for recurring subjects are rejected by the pre-generation validator.\n  Same pattern for 369: the team's visual identity references (page DNA\n  moodboards) become ingredient-grade anchors for series covers and reels.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Frames-to-Video: Start/End Frame Lock (in-betweening)",
+    "what_it_does": "The user supplies a start frame, an end frame, or both; the model generates the animated transition between them — interpolating motion, lighting changes, and scene evolution.",
+    "why_it_works": "It replaces the weakest part of generative video (the model inventing the whole composition) with the strongest part (motion interpolation). The creator controls exactly how the shot begins and ends; the model only fills the middle.",
+    "genesis_implementation": "When deterministic framing matters, prefer the frame-lock path: render stills first (Imagen or a frame-extraction step), lock them as start/end, then animate. Do not start from a text-only prompt when a composed frame is affordable — the still is cheaper to QC than a failed 8-second render. For 369 reels: generate the hero cover frame first (reviewed, approved), then animate it into the opening shot — never let the opening frame be a surprise.",
+    "raw": "- **What it does:** The user supplies a start frame, an end frame, or both;\n  the model generates the animated transition between them — interpolating\n  motion, lighting changes, and scene evolution.\n- **Why it works:** It replaces the weakest part of generative video (the\n  model inventing the whole composition) with the strongest part (motion\n  interpolation). The creator controls exactly how the shot begins and ends;\n  the model only fills the middle.\n- **GENESIS implementation:** When deterministic framing matters, prefer the\n  frame-lock path: render stills first (Imagen or a frame-extraction step),\n  lock them as start/end, then animate. Do not start from a text-only prompt\n  when a composed frame is affordable — the still is cheaper to QC than a\n  failed 8-second render. For 369 reels: generate the hero cover frame first\n  (reviewed, approved), then animate it into the opening shot — never let the\n  opening frame be a surprise.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Two-System Camera Control (prompt-time direction + post-generation adjustment)",
+    "what_it_does": "Flow exposes camera as two separate systems: (1) direction at prompt time through a Cinematography layer of the prompt, and (2) a post-generation Camera Adjustment tool that reframes, orbits, or dollies an already-generated clip (works best on clips without existing camera motion).",
+    "why_it_works": "Prompt-time direction bakes camera into the generation; post-generation adjustment decouples the camera decision from the subject decision, letting a creator fix composition without re-rolling the whole shot.",
+    "genesis_implementation": "Separate camera specification into a structured `camera` object (preset name + intensity), never prose buried in the prompt body. Keep a `CAMERA_PRESETS` registry (dolly, crane, orbit, tracking, handheld, crash zoom, whip pan, Dutch tilt, static...). For generated video work: always attempt prompt-time direction first; treat post-generation camera adjustment as the cheap fix before re-generation.",
+    "raw": "- **What it does:** Flow exposes camera as two separate systems: (1) direction\n  at prompt time through a Cinematography layer of the prompt, and\n  (2) a post-generation Camera Adjustment tool that reframes, orbits, or\n  dollies an already-generated clip (works best on clips without existing\n  camera motion).\n- **Why it works:** Prompt-time direction bakes camera into the generation;\n  post-generation adjustment decouples the camera decision from the subject\n  decision, letting a creator fix composition without re-rolling the whole\n  shot.\n- **GENESIS implementation:** Separate camera specification into a structured\n  `camera` object (preset name + intensity), never prose buried in the prompt\n  body. Keep a `CAMERA_PRESETS` registry (dolly, crane, orbit, tracking,\n  handheld, crash zoom, whip pan, Dutch tilt, static...). For generated video\n  work: always attempt prompt-time direction first; treat post-generation\n  camera adjustment as the cheap fix before re-generation.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-04",
+    "title": "SceneBuilder: Timeline Clip Assembly (rushes → sequence)",
+    "what_it_does": "A timeline tool to arrange, trim, and reorder AI-generated clips into a scene — treating AI clips like real footage rushes. Extend continues a clip from its last frame; Jump To has Gemini analyze how the previous clip ended and generate a new shot that preserves character context in a different setting.",
+    "why_it_works": "Short generations (4–10s each) are individually useless for narrative; the timeline converts disposable clips into a cuttable sequence. Jump To automates the most painful continuity job — the transition — with the previous clip as context.",
+    "genesis_implementation": "Any multi-shot deliverable must pass through a scene-assembly stage: each clip is a timed entry with in/out points and a transition note. For 369 reels this is the edit plan: beats timed to the REEL TEXT-TIMING LAW (each text ≥3s), clips sequenced and logged before any render. Never assemble a \"final\" from a single generation.",
+    "raw": "- **What it does:** A timeline tool to arrange, trim, and reorder AI-generated\n  clips into a scene — treating AI clips like real footage rushes. Extend\n  continues a clip from its last frame; Jump To has Gemini analyze how the\n  previous clip ended and generate a new shot that preserves character\n  context in a different setting.\n- **Why it works:** Short generations (4–10s each) are individually useless\n  for narrative; the timeline converts disposable clips into a cuttable\n  sequence. Jump To automates the most painful continuity job — the\n  transition — with the previous clip as context.\n- **GENESIS implementation:** Any multi-shot deliverable must pass through a\n  scene-assembly stage: each clip is a timed entry with in/out points and a\n  transition note. For 369 reels this is the edit plan: beats timed to the\n  REEL TEXT-TIMING LAW (each text ≥3s), clips sequenced and logged before\n  any render. Never assemble a \"final\" from a single generation.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Whisk-Style Moodboard: Style Collage as a Look Lock",
+    "what_it_does": "A visual collage tool combines reference images to define art direction; images generated inside the project then feed directly into video generation as style ingredients.",
+    "why_it_works": "Style described in words (\"cinematic\") is the most ambiguous part of a prompt. A collage is a thousand concrete constraints: palette, texture, lens character — specified by example, not adjective.",
+    "genesis_implementation": "Before any stylized piece: assemble a moodboard of 3–6 references (own past work, never copyrighted material), lock it as the style ingredient, and attach it to every shot's job record. The 369 content team already lives by this (page-DNA moodboards); Flow's pattern formalizes it as a pipeline stage with a name: no moodboard, no stylized generation.",
+    "raw": "- **What it does:** A visual collage tool combines reference images to define\n  art direction; images generated inside the project then feed directly into\n  video generation as style ingredients.\n- **Why it works:** Style described in words (\"cinematic\") is the most\n  ambiguous part of a prompt. A collage is a thousand concrete constraints:\n  palette, texture, lens character — specified by example, not adjective.\n- **GENESIS implementation:** Before any stylized piece: assemble a\n  moodboard of 3–6 references (own past work, never copyrighted material),\n  lock it as the style ingredient, and attach it to every shot's job record.\n  The 369 content team already lives by this (page-DNA moodboards); Flow's\n  pattern formalizes it as a pipeline stage with a name: no moodboard, no\n  stylized generation.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Lasso + Conversational Region Editing (mask, don't re-roll)",
+    "what_it_does": "Draw a selection around a region of an image; apply conversational prompts (\"remove the man\", \"add koi fish\") to that region only. Images can also be edited with text+image masking instead of re-generating the whole frame.",
+    "why_it_works": "Re-rolling an entire image to fix one object wastes budget and risks changing the 95% that was already good. Masked edits preserve the approved remainder.",
+    "genesis_implementation": "Our image/video fix loop must prefer targeted region edits over full re-generation (mirrors W-02 of Astra: smallest change at root cause). Any re-roll of a full frame to fix a localized defect requires justification in the job record. For 369 QC findings (e.g., text below safe area, a stray artifact): mask-edit first.",
+    "raw": "- **What it does:** Draw a selection around a region of an image; apply\n  conversational prompts (\"remove the man\", \"add koi fish\") to that region\n  only. Images can also be edited with text+image masking instead of\n  re-generating the whole frame.\n- **Why it works:** Re-rolling an entire image to fix one object wastes\n  budget and risks changing the 95% that was already good. Masked edits\n  preserve the approved remainder.\n- **GENESIS implementation:** Our image/video fix loop must prefer\n  targeted region edits over full re-generation (mirrors W-02 of Astra:\n  smallest change at root cause). Any re-roll of a full frame to fix a\n  localized defect requires justification in the job record. For 369 QC\n  findings (e.g., text below safe area, a stray artifact): mask-edit first.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Drawing Instructions on Reference Images (motion vectors as input)",
+    "what_it_does": "The user can draw directly on a reference image to indicate the desired direction of movement — arrows and strokes become motion intent.",
+    "why_it_works": "Motion is notoriously hard to describe in prose (\"move gracefully\"). A drawn arrow is unambiguous and language-independent.",
+    "genesis_implementation": "Where our own tooling accepts spatial intent, accept vector annotations (arrow = direction + magnitude) as a first-class prompt input, not prose. Applies to camera moves, object trajectories, and attention-grabbing motion in reels/thumbnails.",
+    "raw": "- **What it does:** The user can draw directly on a reference image to\n  indicate the desired direction of movement — arrows and strokes become\n  motion intent.\n- **Why it works:** Motion is notoriously hard to describe in prose (\"move\n  gracefully\"). A drawn arrow is unambiguous and language-independent.\n- **GENESIS implementation:** Where our own tooling accepts spatial intent,\n  accept vector annotations (arrow = direction + magnitude) as a first-class\n  prompt input, not prose. Applies to camera moves, object trajectories,\n  and attention-grabbing motion in reels/thumbnails.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "T-12",
+    "title": "Gemini Omni Flash: Conversational Video Editing (blend real + generated)",
+    "what_it_does": "A multimodal model accepts text, image, and video inputs at once: blend a real photograph with a generated character in one editing pass, and request edits in plain chat (\"make the sky darker in the second shot\"). Improved identity and voice continuity across scenes.",
+    "why_it_works": "It replaces the discrete pipeline (generate → download → edit in NLE → re-upload) with a conversation over the artifact itself. The model sees the pixels, so instructions reference what exists instead of re-describing it.",
+    "genesis_implementation": "Design our revision loops around the artifact, not the prompt: hand the model (or the reviewer) the current frame/clip plus the change request. Reviewer feedback must reference timestamps and frame regions (\"0:04–0:06, left third\"), never abstract prose. For 369 revision rounds: the verifier annotates the actual frame, and the fix job takes frame + annotation as input.",
+    "raw": "- **What it does:** A multimodal model accepts text, image, and video inputs\n  at once: blend a real photograph with a generated character in one editing\n  pass, and request edits in plain chat (\"make the sky darker in the second\n  shot\"). Improved identity and voice continuity across scenes.\n- **Why it works:** It replaces the discrete pipeline (generate → download →\n  edit in NLE → re-upload) with a conversation over the artifact itself. The\n  model sees the pixels, so instructions reference what exists instead of\n  re-describing it.\n- **GENESIS implementation:** Design our revision loops around the artifact,\n  not the prompt: hand the model (or the reviewer) the current frame/clip\n  plus the change request. Reviewer feedback must reference timestamps and\n  frame regions (\"0:04–0:06, left third\"), never abstract prose. For 369\n  revision rounds: the verifier annotates the actual frame, and the fix job\n  takes frame + annotation as input.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Asset Collections: Named Ingredient Library (one per project)",
+    "what_it_does": "Built-in asset management — catalog, reuse, and refine ingredients and prompts in searchable collections per project; the Flow Agent can rename files, organize media into collections, and archive unused assets.",
+    "why_it_works": "AI production multiplies assets; without a library the team regenerates what it already had and loses consistency references.",
+    "genesis_implementation": "Every video project gets a named collection: ingredients (locked references), approved stills, clip versions, prompts used. The agent housekeeping rule: unused assets archived, approved assets never deleted mid-project. This maps directly to the 369 team's SAMPLE GROUP NAMING LAW — every asset set carries a clear, unique name.",
+    "raw": "- **What it does:** Built-in asset management — catalog, reuse, and refine\n  ingredients and prompts in searchable collections per project; the Flow\n  Agent can rename files, organize media into collections, and archive\n  unused assets.\n- **Why it works:** AI production multiplies assets; without a library the\n  team regenerates what it already had and loses consistency references.\n- **GENESIS implementation:** Every video project gets a named collection:\n  ingredients (locked references), approved stills, clip versions, prompts\n  used. The agent housekeeping rule: unused assets archived, approved\n  assets never deleted mid-project. This maps directly to the 369 team's\n  SAMPLE GROUP NAMING LAW — every asset set carries a clear, unique name.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Five-Layer Prompt Formula (Flow's official grammar)",
+    "use_when": "writing any video-generation prompt.",
+    "pattern": "Build the prompt as five explicit layers, in order. Missing layers get filled by the model with something average — fill them yourself.",
+    "template": " > [Cinematography] + [Subject] + [Action] + [Context] + [Style & Ambiance] > Cinematography: <shot type, angle, movement, lens effect> > Subject: <who/what, specific visual traits, role> > Action: <ONE primary action, interactions, expression> > Context: <environment, era, objects, light sources> > Style & Ambiance: <color grade, mood, texture, reference name>",
+    "raw": "- **Use when:** writing any video-generation prompt.\n- **Pattern:** Build the prompt as five explicit layers, in order. Missing\n  layers get filled by the model with something average — fill them yourself.\n- **Template:**\n  > [Cinematography] + [Subject] + [Action] + [Context] + [Style & Ambiance]\n  > Cinematography: <shot type, angle, movement, lens effect>\n  > Subject: <who/what, specific visual traits, role>\n  > Action: <ONE primary action, interactions, expression>\n  > Context: <environment, era, objects, light sources>\n  > Style & Ambiance: <color grade, mood, texture, reference name>",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Coverage Grammar (shot vocabulary per scene)",
+    "use_when": "planning a scene of more than one shot.",
+    "pattern": "Every scene gets coverage from the same fixed vocabulary so the sequence cuts together: establishing / medium / close-up, with named camera moves.",
+    "template": " > SCENE: <beat description> > COVERAGE: 1. Establishing: <environment, wide> 2. Medium: <subject in > context> 3. Close-up: <detail, emotion, object> 4. (optional) Insert. > Camera per shot: <preset name from the CAMERA_PRESETS registry>. > 369 rule: each coverage note carries its text timing (text ≥ 3s on screen).",
+    "raw": "- **Use when:** planning a scene of more than one shot.\n- **Pattern:** Every scene gets coverage from the same fixed vocabulary so\n  the sequence cuts together: establishing / medium / close-up, with named\n  camera moves.\n- **Template:**\n  > SCENE: <beat description>\n  > COVERAGE: 1. Establishing: <environment, wide> 2. Medium: <subject in\n  > context> 3. Close-up: <detail, emotion, object> 4. (optional) Insert.\n  > Camera per shot: <preset name from the CAMERA_PRESETS registry>.\n  > 369 rule: each coverage note carries its text timing (text ≥ 3s on screen).",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Camera-Control Token (prompt-time vs post decision)",
+    "use_when": "the shot needs a specific camera move.",
+    "pattern": "Choose the camera as a named preset token in the Cinematography layer; decide deliberately whether it is baked at prompt time or fixed in post.",
+    "template": " > CAMERA: [dolly-in slow] baked at generation. > Or: CAMERA: [static] — post-adjust: [slow push-in] after QC pass. > Rule: post-adjust only on shots with NO baked camera motion (re-adjusting a > moving shot produces warping).",
+    "raw": "- **Use when:** the shot needs a specific camera move.\n- **Pattern:** Choose the camera as a named preset token in the Cinematography\n  layer; decide deliberately whether it is baked at prompt time or fixed in\n  post.\n- **Template:**\n  > CAMERA: [dolly-in slow] baked at generation.\n  > Or: CAMERA: [static] — post-adjust: [slow push-in] after QC pass.\n  > Rule: post-adjust only on shots with NO baked camera motion (re-adjusting a\n  > moving shot produces warping).",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Idea → Film Pipeline (the master sequence)",
+    "body": "The master workflow. Every video deliverable follows it.\n\n1. **INTAKE** — Receive the brief: goal (what the film must do), constraints\n   (budget, tier, models allowed), done-means (how QC judges it).\n   Exit: concrete, verifiable goal; otherwise one clarifying question.\n2. **PLAN AS SHOTS** — Break the idea into a shot list (P-06 coverage:\n   establishing/medium/close-up). Each shot gets: the five-layer prompt\n   (P-01), ingredients (P-03), camera token (P-07), audio spec (P-05).\n   Exit: written shot list with per-shot locks; no locks, no render.\n3. **LOCK THE LOOK** — Moodboard → variation set (P-10) → winning style\n   ingredient (P-09). Exit: one locked moodboard attached to every shot.\n4. **DRAFT CHEAP** — Render each shot at the lowest tier (T-07): composition\n   and timing only. Exit: drafts approved for composition; identity defects\n   are expected and ignored at this tier.\n5. **RENDER HEROES** — Standard/hero tier only for shots whose drafts passed.\n   Frame-lock (P-04) where composition is pre-decided. Exit: all hero clips\n   rendered; failed ones fixed by masked edit (T-09) or re-rendered with a\n   recorded reason.\n6. **ASSEMBLE** — SceneBuilder-style timeline (T-04): arrange, trim, order;\n   extend-chains (P-08) for sequences over ~32s with QC checkpoints.\n   Exit: timed assembly; every on-screen text ≥3s (the reel law).\n7. **AUDIO PASS** — Verify native audio per clip; repair the audio lane for\n   extended/masked chains (T-05) — re-record or layer SFX as needed.\n   Exit: full mix, no silent gaps, no desync.\n8. **MERCILESS REVIEW** — Independent scored review (LAW-050), including the\n   anti-AI-slop criterion (LAW-149): nothing generic, glossy, or formulaic\n   passes. Exit: PASS or fix-list.\n9. **DELIVER** — Export (MP4/WebM/frames), archive prompts + ingredients +\n   settings into the prompt library (T-06 Flow TV pattern), spend report.\n   Exit: father sees only the finished outcome.\n\nFailure mode guarded: skipping locks (step 2–3) and going straight to render —\nblocked by the pre-generation validator.",
+    "modules": [
+     "hands",
+     "lab",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "Shot Assembly (SceneBuilder discipline)",
+    "body": "For building a sequence from generated clips (lab + report + the 369 video\neditor's job).\n\n1. **COLLECT** — Every clip arrives with its provenance: prompt, model, tier,\n   ingredients, settings. No clip enters the timeline anonymously.\n   Exit: asset register complete.\n2. **ORDER** — Drag into narrative order on the timeline; each entry carries\n   in/out points and a transition note (cut / match-cut / extend-hop).\n   Exit: sequence runs start to finish without gaps.\n3. **CONTINUITY CHECK** — Adjacent clips compared for: subject identity,\n   lighting direction, camera direction (the 180° rule), audio continuity.\n   Exit: all mismatches flagged; Jump-To-style bridges (T-04) planned for\n   the gaps.\n4. **BRIDGE** — Generate transition hops only where flagged, with\n   ingredients re-anchored (T-01) and max-hop discipline (T-11).\n   Exit: bridges QC'd individually before joining.\n5. **TIMING** — Text overlays and beats timed; export clips individually\n   (never rely on the builder's export for final — independent evidence\n   shows audio strips on export, so stitch in the real NLE).\n   Exit: timeline lock.\n\nEntry: rendered clips + register. Exit: locked timeline, individually\nexported clips, stitch note for the NLE.\nFailure mode guarded: \"export and ship from the builder\" — blocked by the\nindividual-export rule; audio loss is silent otherwise.",
+    "modules": [
+     "hands",
+     "report"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Edit Loop (conversational revision on the artifact)",
+    "body": "For fixing and iterating after review (T-09, T-12, Astra W-02 spirit).\n\n1. **ANNOTATE** — Reviewer marks the actual frame: timestamp + region +\n   defect (\"0:04–0:06, left third, face drift\"). No abstract prose.\n   Exit: defect list is frame-addressed.\n2. **CLASSIFY** — Per defect: masked fix (inpaint/remove/edit region) vs\n   full re-render. Default: masked. Exit: fix plan with justification for\n   every full re-render.\n3. **FIX** — Masked edit first; re-render only the failed shot, reusing the\n   original ingredients and locks. Exit: fixed clip; parent clip retained\n   for comparison.\n4. **VERIFY** — Re-review the fixed region; confirm no collateral change to\n   the 95% that was good. Exit: defect closed with before/after evidence.\n5. **RECORD** — What failed, what fixed it, which pattern worked → prompt\n   library + memory (confirmed-only, P-04 of Astra).\n\nEntry: merciless-review fix-list. Exit: all defects closed with evidence;\nlearnings stored. Failure mode guarded: full re-rolls that silently change\napproved content — blocked by the masked-first rule.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "artflow": {
+  "techniques": [
+   {
+    "id": "T-07",
+    "title": "Script→Voice→Lip-Sync Assembly Line",
+    "what_it_does": "The talking-head pipeline is three decoupled stages: (1) image/character selection, (2) voice selection + typed script (TTS), (3) lip-sync animation binding the voice to the mouth. Each stage is swappable — change the script without re-rendering the face.",
+    "why_it_works": "Decoupling means cheap iteration: a new line of dialogue costs a TTS pass, not a full re-render. The stage boundaries are also the QC boundaries — a bad voice is caught before animation money is spent.",
+    "genesis_implementation": "**HARD FLAG — NO AI VOICE law:** the voice stage is FORBIDDEN on 369 content (zero voice synthesis, standing order). What GENESIS adopts is the STAGE PATTERN, not the pipeline: any multi-modal assembly (image + caption + motion + end-card) is built as swappable stages with per-stage QC gates, so one stage's failure never forces a full rebuild. Map to hands' step_runner as staged assembly with verify() between stages (see astra T-01).",
+    "raw": "- **What it does:** The talking-head pipeline is three decoupled stages: (1)\n  image/character selection, (2) voice selection + typed script (TTS), (3)\n  lip-sync animation binding the voice to the mouth. Each stage is swappable —\n  change the script without re-rendering the face.\n- **Why it works:** Decoupling means cheap iteration: a new line of dialogue\n  costs a TTS pass, not a full re-render. The stage boundaries are also the\n  QC boundaries — a bad voice is caught before animation money is spent.\n- **GENESIS implementation:** **HARD FLAG — NO AI VOICE law:** the voice stage\n  is FORBIDDEN on 369 content (zero voice synthesis, standing order). What\n  GENESIS adopts is the STAGE PATTERN, not the pipeline: any multi-modal\n  assembly (image + caption + motion + end-card) is built as swappable stages\n  with per-stage QC gates, so one stage's failure never forces a full rebuild.\n  Map to hands' step_runner as staged assembly with verify() between stages\n  (see astra T-01).",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Talking-Head Assembly (stage-decoupled)",
+    "body": "- **Entry criteria:** locked portrait asset (from W-02 or approved still);\n  final script locked; voice decision made per standing law.\n- **Steps:**\n  1. Asset prep: crop to portrait spec, mouth visible, single face.\n  2. Voice stage: TTS render per dialogue card (P-10) — OR, per NO AI VOICE\n     law on 369: this stage is SKIPPED and the workflow becomes a\n     captioned/motion treatment instead.\n  3. Lip-sync bind: voice drives mouth; head motion stays within the\n     expression model's range (wide moves and text-on-face route to the\n     expression-motion path, per public walkthrough guidance).\n  4. QC: mouth/face integrity on first, middle, last frame; no text over the\n     mouth; export at target spec.\n- **Exit criteria:** video passes frame QC; dialogue cards all rendered (or\n  voice stage formally waived with reason); cost reconciled.\n- **Guarded failure modes:**\n  - Portrait has text over the mouth → reroute before animation; the lip-sync\n    stage cannot fix a covered mouth.\n  - Voice render sounds wrong → re-voice the single card, never the whole\n    script (this is why the stages are decoupled).\n  - Script longer than the animation model's ceiling → split across clips\n    (two speakers max per clip is the public guidance); never stretch one\n    clip past its model's range.",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "chatgpt-images": {
+  "techniques": [
+   {
+    "id": "T-02",
+    "title": "Conversational Multi-Turn Edit Refinement",
+    "what_it_does": "Every generation becomes the input to the next. The user issues small edits conversationally (\"move the product slightly right, keep everything else unchanged\") and the system preserves prior decisions instead of regenerating from a blank slate.",
+    "why_it_works": "Real creative work is iterative: fix one thing, keep the rest. Stateless regeneration re-rolls everything, which breaks one fixed thing for every thing it fixes. Context carryover makes the workflow feel like working with a human artist across rounds.",
+    "genesis_implementation": "Design our image pipelines as sessions, not one-shot calls. Keep (prompt history, accepted image, change log) per asset in a work record; each new call passes the latest accepted image back in plus the delta instruction. Never re-generate a whole asset when only one element changed.",
+    "raw": "- **What it does:** Every generation becomes the input to the next. The user\n  issues small edits conversationally (\"move the product slightly right, keep\n  everything else unchanged\") and the system preserves prior decisions instead\n  of regenerating from a blank slate.\n- **Why it works:** Real creative work is iterative: fix one thing, keep the\n  rest. Stateless regeneration re-rolls everything, which breaks one fixed\n  thing for every thing it fixes. Context carryover makes the workflow feel\n  like working with a human artist across rounds.\n- **GENESIS implementation:** Design our image pipelines as sessions, not\n  one-shot calls. Keep (prompt history, accepted image, change log) per asset\n  in a work record; each new call passes the latest accepted image back in\n  plus the delta instruction. Never re-generate a whole asset when only one\n  element changed.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Input Fidelity Control for Edits",
+    "what_it_does": "Edit calls carry a fidelity setting: high fidelity preserves fine details, identity, and textures of the input image; low fidelity gives the model more creative freedom to transform. Faces and branded objects get high fidelity; style transfer gets loose fidelity.",
+    "why_it_works": "Every edit is a tension between preservation and change. An explicit control turns that tension into a deliberate choice instead of a coin flip — identity-preserving edits and free reinterpretations stop being accidents.",
+    "genesis_implementation": "Expose a `fidelity` parameter on every edit operation in our image layer (default high for product/face work, low for style experiments). Record the setting per asset so retries can be classified: \"preservation failed\" vs \"transformation insufficient\" map to different fidelity choices.",
+    "raw": "- **What it does:** Edit calls carry a fidelity setting: high fidelity\n  preserves fine details, identity, and textures of the input image; low\n  fidelity gives the model more creative freedom to transform. Faces and\n  branded objects get high fidelity; style transfer gets loose fidelity.\n- **Why it works:** Every edit is a tension between preservation and change.\n  An explicit control turns that tension into a deliberate choice instead of\n  a coin flip — identity-preserving edits and free reinterpretations stop\n  being accidents.\n- **GENESIS implementation:** Expose a `fidelity` parameter on every edit\n  operation in our image layer (default high for product/face work, low for\n  style experiments). Record the setting per asset so retries can be\n  classified: \"preservation failed\" vs \"transformation insufficient\" map to\n  different fidelity choices.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Text-in-Image Rendering via Quoted Text",
+    "what_it_does": "To render text inside an image, the exact string is placed in quotes in the prompt — practitioners quote it twice (once in the main text block, once in a constraints reminder) to reduce spelling drift. The model family was specifically improved for dense and small text: infographics, labels, menus, mockups.",
+    "why_it_works": "Quoted strings give the model a literal target instead of a concept to paraphrase. Double placement gives two binding chances. Density handling (many small labels) comes from training emphasis, which we cannot replicate — but the prompting discipline we can.",
+    "genesis_implementation": "Our text-overlay pipeline should treat AI-rendered text as a DRAFT: quote strings exactly, double-place critical headlines, and always run a spelling verification pass after generation (OCR the output or, cheaper, visually QC). For 369's English-only brand text, prefer compositing real type with code (PIL) over model-rendered text whenever precision is non-negotiable — model text for backgrounds, code text for headlines.",
+    "raw": "- **What it does:** To render text inside an image, the exact string is placed\n  in quotes in the prompt — practitioners quote it twice (once in the main\n  text block, once in a constraints reminder) to reduce spelling drift. The\n  model family was specifically improved for dense and small text:\n  infographics, labels, menus, mockups.\n- **Why it works:** Quoted strings give the model a literal target instead of\n  a concept to paraphrase. Double placement gives two binding chances.\n  Density handling (many small labels) comes from training emphasis, which we\n  cannot replicate — but the prompting discipline we can.\n- **GENESIS implementation:** Our text-overlay pipeline should treat\n  AI-rendered text as a DRAFT: quote strings exactly, double-place critical\n  headlines, and always run a spelling verification pass after generation\n  (OCR the output or, cheaper, visually QC). For 369's English-only brand\n  text, prefer compositing real type with code (PIL) over model-rendered\n  text whenever precision is non-negotiable — model text for backgrounds,\n  code text for headlines.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Progressive Partial-Image Streaming",
+    "what_it_does": "The API supports progressive streaming of partial images (0–3): intermediate render states arrive while the final is still computing, letting the caller watch generation converge.",
+    "why_it_works": "Generation takes tens of seconds; streaming converts waiting time into early signal. A practitioner can kill a bad direction at 30% instead of paying full price for a bad full render.",
+    "genesis_implementation": "If our image layer ever wraps a streaming API, surface partials to the review gate for early-abort decisions. Short term, the pattern generalizes: any long asset operation (video render, large batch) should emit progress snapshots that an overseer can inspect and abort — never black-box until completion.",
+    "raw": "- **What it does:** The API supports progressive streaming of partial images\n  (0–3): intermediate render states arrive while the final is still\n  computing, letting the caller watch generation converge.\n- **Why it works:** Generation takes tens of seconds; streaming converts\n  waiting time into early signal. A practitioner can kill a bad direction\n  at 30% instead of paying full price for a bad full render.\n- **GENESIS implementation:** If our image layer ever wraps a streaming\n  API, surface partials to the review gate for early-abort decisions.\n  Short term, the pattern generalizes: any long asset operation (video\n  render, large batch) should emit progress snapshots that an overseer can\n  inspect and abort — never black-box until completion.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-08",
+    "title": "Incremental Revision (one element per round)",
+    "use_when": "the first result is close but imperfect.",
+    "pattern": "Never rewrite the whole brief. Issue one targeted delta per round, and explicitly lock everything else.",
+    "template": " > Keep everything unchanged except: [single specific change, with its >   location in the frame]. Make the change [softer/stronger/shifted left], >   leave composition, lighting, and all other elements exactly as they are. > Review after each round. Stop when the asset passes; do not keep > \"improving\" a passing asset.",
+    "raw": "- **Use when:** the first result is close but imperfect.\n- **Pattern:** Never rewrite the whole brief. Issue one targeted delta per\n  round, and explicitly lock everything else.\n- **Template:**\n  > Keep everything unchanged except: [single specific change, with its\n  >   location in the frame]. Make the change [softer/stronger/shifted left],\n  >   leave composition, lighting, and all other elements exactly as they are.\n  > Review after each round. Stop when the asset passes; do not keep\n  > \"improving\" a passing asset.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-09",
+    "title": "Preserve Locks for Edits",
+    "use_when": "editing an uploaded or accepted image.",
+    "pattern": "Name what must survive the edit BEFORE describing the change. The lock list outranks the change instruction.",
+    "template": " > Preserve exactly: [product shape and color, face identity, text that is >   already correct, background composition]. Now change only: [the edit]. > If the model cannot make the change without altering a preserved element, > report that instead of silently changing it. > Use a high input-fidelity setting for identity/product preservation.",
+    "raw": "- **Use when:** editing an uploaded or accepted image.\n- **Pattern:** Name what must survive the edit BEFORE describing the change.\n  The lock list outranks the change instruction.\n- **Template:**\n  > Preserve exactly: [product shape and color, face identity, text that is\n  >   already correct, background composition]. Now change only: [the edit].\n  > If the model cannot make the change without altering a preserved element,\n  > report that instead of silently changing it.\n  > Use a high input-fidelity setting for identity/product preservation.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Concept → Final Asset (explore → anchor → refine → QC → deliver)",
+    "body": "The master production workflow for a single hero image.\n\n1. **BRIEF** — Write the P-01 sectioned brief (Scene/Subject/Details/Use\n   case/Constraints), 250–400 words. Entry: the deliverable spec is known\n   (size, format, where it ships). Exit: brief passes the lint (positive\n   framing per P-05, hero front-loaded per P-02, no vague words).\n2. **EXPLORE** — Generate 2–4 variants at LOW quality (T-08 draft tier).\n   Exit: one direction chosen by the reviewer; the rest are discarded, not\n   stored.\n3. **ANCHOR** — Lock the winning direction: generate or select the reference\n   assets (T-04 role-labeled references) and write the P-03 consistency\n   block if anything must recur. Exit: reference set + consistency block\n   are versioned and stored with the job.\n4. **RENDER** — One generation at MEDIUM or HIGH quality with the full\n   brief, references, and size/format locked (T-11 transparent PNG if the\n   asset is a layer). Exit: a render that matches the brief on structure,\n   subject, and style.\n5. **QC** — Independent review against the brief: spelling of every quoted\n   string (P-04), anatomy sanity, no collateral changes, brand-fit check.\n   Exit: PASS, or a single specific fix-list for one edit round.\n6. **DELIVER** — Final file + job record (prompt, seed, references, cost,\n   provenance stamp per T-12). Exit: the asset is in its library with a\n   name and version; the reviewer, not the generator, signed off.\n\nFailure modes guarded: prompt bloat (word-count lint in BRIEF),\ndraft-priced finals (quality ladder enforced by stage), unverified \"done\"\nclaims (QC before DELIVER), anonymous assets (job record with provenance).",
+    "modules": [
+     "eyes",
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "Edit/Iterate Loop (multi-turn refinement)",
+    "body": "For fixing or evolving an existing image without regenerating it.\n\n1. **BASELINE** — The accepted image is stored as the session base with its\n   full brief. Entry: a base image exists and is accepted. Exit: base is\n   immutable for the session (all edits are deltas against it).\n2. **DELTA** — Issue ONE targeted change per round (P-08) with a preserve\n   list (P-09): what survives is named before what changes. Entry: the\n   previous round's output is reviewed. Exit: one delta instruction,\n   max 2 sentences.\n3. **APPLY** — Run the edit at HIGH input fidelity (T-06) when preserving\n   identity/product; generate a mask (T-05) when the change is regional.\n   Exit: new output image.\n4. **VERIFY** — Compare output against base: is the delta applied AND are\n   all preserved elements intact? Exit: PASS (becomes the new baseline) or\n   FAIL with the specific regression named.\n5. **CIRCUIT BREAKER** — If 3 consecutive rounds fail, stop iterating:\n   return to BRIEF with a rewritten brief (W-01 step 1) instead of a 4th\n   edit round. Exit: either a passing baseline or an escalated re-brief.\n   Never run more than 5 edit rounds on one base — diminishing returns are\n   a known wall (regeneration drift).\n\nFailure modes guarded: fix-one-break-one cycles (VERIFY checks preserves\nevery round), infinite iteration (circuit breaker at 3), drift across\nrounds (baseline is always the last PASS, never the last attempt).",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Series Consistency (campaign / carousel / multi-panel set)",
+    "body": "For N images that must read as one family.\n\n1. **DEFINE** — Lock the family identity: write the P-03 consistency block\n   for every recurring element (character, object, location, palette,\n   typography treatment) and store it as the single source of truth.\n   Entry: the series concept is approved. Exit: one locked identity block,\n   versioned.\n2. **ANCHOR SHEET** — Generate the reference sheet first (T-03): for a\n   character, front/side/back + expressions + palette; for a style, the\n   master composition at the series dimensions. Exit: the anchor sheet\n   passes QC and is the visual law of the series.\n3. **PER-ITEM BRIEFS** — Each item gets a P-01 brief where the Subject slot\n   is the identity block injected VERBATIM (T-03, T-10) plus the item's\n   unique Scene. Exit: N briefs, all sharing identical Subject text.\n4. **GENERATE** — Render items sequentially, each with the anchor sheet\n   passed as a reference image (T-04). Exit: N candidate images.\n5. **FAMILY REVIEW** — Review all N side by side: same face, same outfit,\n   same palette, same typography treatment across the set — not just each\n   image against its own brief. Exit: PASS for all, or named items return\n   to GENERATE with the identical (unchanged) brief.\n6. **SEAL** — Version the set as one deliverable; store the identity block\n   and anchor sheet with it for future extensions of the series.\n\nFailure modes guarded: paraphrase drift (verbatim injection is code, not\ntyping), single-image blindness (family review catches cross-item\ninconsistency), style averaging (role-labeled references, not mood boards).",
+    "modules": [
+     "eyes",
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Product/Packshot Photography (preserve product, vary environment)",
+    "body": "For commercial product visuals without a studio.\n\n1. **PRODUCT LOCK** — The source product photo is the immutable reference:\n   exact shape, color, label, proportions recorded. Entry: a clean product\n   image exists. Exit: product-lock record (these attributes must survive\n   every generation).\n2. **SCENE BRIEF** — Describe the environment only; the product is injected\n   as \"the locked product, preserved exactly\" (P-09). Never re-describe the\n   product in prose. Exit: scene brief with the preserve-first structure.\n3. **RENDER** — Generate at MEDIUM quality, HIGH input fidelity (T-06),\n   product reference passed as an input image. Exit: scene render.\n4. **PRODUCT QC** — Compare the rendered product against the product-lock\n   record attribute by attribute (shape, color, label spelling, proportions).\n   This is a hard gate: any deviation = regenerate. Exit: PASS or regenerate\n   with the same lock.\n5. **FINAL PASS** — Re-render the accepted scene at HIGH quality; final QC\n   repeats step 4. Exit: sealed asset + product-lock record archived with it.\n\nFailure modes guarded: product hallucination (lock record + hard gate),\nlabel misspelling (spelling is part of the lock), studio cost (environment\nvariation is the only variable; the product never varies).",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Adaptive Effort Thinking (reasoning depth matched to difficulty)",
+    "what_it_does": "The model decides per request how much to think, governed by an effort setting (low / medium / high / max) instead of a fixed token budget. Simple queries skip thinking entirely; hard ones reason deeply. In the coding harness, depth can also be escalated with thinking keywords (\"think\" → \"think harder\" → \"ultrathink\").",
+    "why_it_works": "Fixed budgets starve hard tasks and waste tokens on easy ones. Adaptive thinking couples compute spend to actual difficulty, and the visible thinking trace becomes inspectable debugging material when something goes wrong.",
+    "genesis_implementation": "Add `effort` to the scheduler's job schema and to the lab/hands reasoning policy (low = act directly, high = deliberate first). Log thinking tokens per job. Default to medium; escalate on verify-failure only. Thinking spend is surfaced in the pre-execution report, honoring the father's zero-spend discipline.",
+    "raw": "- **What it does:** The model decides per request how much to think, governed by\n  an effort setting (low / medium / high / max) instead of a fixed token budget.\n  Simple queries skip thinking entirely; hard ones reason deeply. In the coding\n  harness, depth can also be escalated with thinking keywords (\"think\" →\n  \"think harder\" → \"ultrathink\").\n- **Why it works:** Fixed budgets starve hard tasks and waste tokens on easy\n  ones. Adaptive thinking couples compute spend to actual difficulty, and the\n  visible thinking trace becomes inspectable debugging material when something\n  goes wrong.\n- **GENESIS implementation:** Add `effort` to the scheduler's job schema and to\n  the lab/hands reasoning policy (low = act directly, high = deliberate first).\n  Log thinking tokens per job. Default to medium; escalate on verify-failure\n  only. Thinking spend is surfaced in the pre-execution report, honoring the\n  father's zero-spend discipline.",
+    "modules": [
+     "hands",
+     "lab",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Interleaved Think–Act–Verify (reflection between every tool call)",
+    "what_it_does": "After each tool result returns, the agent reflects on its quality and decides optimal next steps before proceeding — thinking is interleaved with action throughout the run, not done once up front.",
+    "why_it_works": "Tool results routinely invalidate up-front plans. Interleaved reflection converts surprises into local re-plans at the cheapest possible moment instead of letting a stale plan run to failure.",
+    "genesis_implementation": "Give the hands module's step_runner a `reflect()` micro-phase after every tool result: compare result to expectation, then either continue, adjust the next step, or escalate. The plan itself becomes a living artifact, revised locally rather than regenerated wholesale.",
+    "raw": "- **What it does:** After each tool result returns, the agent reflects on its\n  quality and decides optimal next steps before proceeding — thinking is\n  interleaved with action throughout the run, not done once up front.\n- **Why it works:** Tool results routinely invalidate up-front plans. Interleaved\n  reflection converts surprises into local re-plans at the cheapest possible\n  moment instead of letting a stale plan run to failure.\n- **GENESIS implementation:** Give the hands module's step_runner a `reflect()`\n  micro-phase after every tool result: compare result to expectation, then\n  either continue, adjust the next step, or escalate. The plan itself becomes a\n  living artifact, revised locally rather than regenerated wholesale.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Orchestrator + Parallel Specialist Subagents (fan-out exploration)",
+    "what_it_does": "The main agent breaks exploration into parallel specialist workers, each with its own context window, narrowed tool set, and a tight brief (objective, output format, sources, boundaries). Workers return condensed summaries; the orchestrator merges them into a plan. Practitioner traffic analysis observed dozens of model calls in minutes with several subagents exploring a codebase simultaneously.",
+    "why_it_works": "Wall-clock compression for independent strands; the orchestrator's window stays clean of noisy intermediate work; specialists cannot pollute each other's context. A reviewer who never saw the author's scratch work gives a genuinely independent second eye.",
+    "genesis_implementation": "The scheduler supports fan-out task records; the hands module acts as orchestrator; worker subagents run with read-only or bounded tool sets and return summaries capped at ~2,000 tokens. The orchestrator never forwards raw worker transcripts — only merged findings.",
+    "raw": "- **What it does:** The main agent breaks exploration into parallel specialist\n  workers, each with its own context window, narrowed tool set, and a tight\n  brief (objective, output format, sources, boundaries). Workers return condensed\n  summaries; the orchestrator merges them into a plan. Practitioner traffic\n  analysis observed dozens of model calls in minutes with several subagents\n  exploring a codebase simultaneously.\n- **Why it works:** Wall-clock compression for independent strands; the\n  orchestrator's window stays clean of noisy intermediate work; specialists\n  cannot pollute each other's context. A reviewer who never saw the author's\n  scratch work gives a genuinely independent second eye.\n- **GENESIS implementation:** The scheduler supports fan-out task records; the\n  hands module acts as orchestrator; worker subagents run with read-only or\n  bounded tool sets and return summaries capped at ~2,000 tokens. The\n  orchestrator never forwards raw worker transcripts — only merged findings.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Deterministic Hooks: Steer vs. Enforce Split",
+    "what_it_does": "Lifecycle hooks (shell commands triggered on events like before-tool-use, after-tool-use, or agent-stop) with matchers on the tool or action. A hook's exit code can hard-block an action regardless of what the model decided; anything written to stderr becomes the model's feedback. Anthropic's own guidance draws the line: prompting is a request, a hook is a guarantee — the model choosing to run a formatter is different from the formatter running automatically.",
+    "why_it_works": "Instructions can be ignored under pressure or fade over long sessions. A deterministic check blocks regardless of the model's judgment, which is the only real enforcement layer in an agentic system.",
+    "genesis_implementation": "This is the pattern our hands permission_gate must fully adopt: advisory rules live in prompts; hard blocks live in hook-equivalent deterministic code checks (protect paths, deny secret exfiltration, refuse destructive ops). Every law we consider load-bearing gets a deterministic check, not just a sentence in the system prompt. Warn-only on stop events (blocking there risks loops); hard-block on pre-action events.",
+    "raw": "- **What it does:** Lifecycle hooks (shell commands triggered on events like\n  before-tool-use, after-tool-use, or agent-stop) with matchers on the tool or\n  action. A hook's exit code can hard-block an action regardless of what the\n  model decided; anything written to stderr becomes the model's feedback.\n  Anthropic's own guidance draws the line: prompting is a request, a hook is a\n  guarantee — the model choosing to run a formatter is different from the\n  formatter running automatically.\n- **Why it works:** Instructions can be ignored under pressure or fade over\n  long sessions. A deterministic check blocks regardless of the model's\n  judgment, which is the only real enforcement layer in an agentic system.\n- **GENESIS implementation:** This is the pattern our hands permission_gate must\n  fully adopt: advisory rules live in prompts; hard blocks live in\n  hook-equivalent deterministic code checks (protect paths, deny secret\n  exfiltration, refuse destructive ops). Every law we consider load-bearing gets\n  a deterministic check, not just a sentence in the system prompt. Warn-only on\n  stop events (blocking there risks loops); hard-block on pre-action events.",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Just-in-Time Retrieval (identifiers, not dumps)",
+    "what_it_does": "Agents hold lightweight identifiers — file paths, search queries, URLs — and load the actual content through tools at runtime, instead of pre-loading everything up front. A small upfront brief (project conventions file) plus on-demand fetch via search/grep beats both extremes.",
+    "why_it_works": "It mirrors how humans work (bookmarks and file systems, not memorized corpora), avoids stale pre-built indexes, and keeps the context window filled with high-signal tokens. Runtime exploration costs some latency; careful tool design keeps it bounded.",
+    "genesis_implementation": "The hands file-access layer moves to identifier-based fetch: memory stores pointers with freshness metadata, and content is loaded on demand. Never paste an entire codebase into a worker's brief; pass paths and let the worker grep.",
+    "raw": "- **What it does:** Agents hold lightweight identifiers — file paths, search\n  queries, URLs — and load the actual content through tools at runtime, instead\n  of pre-loading everything up front. A small upfront brief (project conventions\n  file) plus on-demand fetch via search/grep beats both extremes.\n- **Why it works:** It mirrors how humans work (bookmarks and file systems, not\n  memorized corpora), avoids stale pre-built indexes, and keeps the context\n  window filled with high-signal tokens. Runtime exploration costs some latency;\n  careful tool design keeps it bounded.\n- **GENESIS implementation:** The hands file-access layer moves to\n  identifier-based fetch: memory stores pointers with freshness metadata, and\n  content is loaded on demand. Never paste an entire codebase into a worker's\n  brief; pass paths and let the worker grep.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Plan Mode Gating (approve before mutate)",
+    "what_it_does": "Before touching code, the agent produces a written plan — what will change, which files, expected outcomes — and waits for approval. Only after approval does execution begin.",
+    "why_it_works": "It is cheap to reject a plan and expensive to revert a bad implementation. Judgment moves upstream to the cheapest decision point, and the approver sees intent before consequences.",
+    "genesis_implementation": "The hands module gets a plan_mode for destructive or large jobs: emit plan artifact (changes + verify method per step), wait for approval record, then execute under T-02's interleaved loop. Unapproved execution is blocked by a T-06 deterministic hook.",
+    "raw": "- **What it does:** Before touching code, the agent produces a written plan —\n  what will change, which files, expected outcomes — and waits for approval.\n  Only after approval does execution begin.\n- **Why it works:** It is cheap to reject a plan and expensive to revert a bad\n  implementation. Judgment moves upstream to the cheapest decision point, and\n  the approver sees intent before consequences.\n- **GENESIS implementation:** The hands module gets a plan_mode for destructive\n  or large jobs: emit plan artifact (changes + verify method per step), wait for\n  approval record, then execute under T-02's interleaved loop. Unapproved\n  execution is blocked by a T-06 deterministic hook.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Git as Memory (commits as recoverable history)",
+    "what_it_does": "Descriptive commits land per increment; the commit history is used to recover from and revert bad changes; an initial commit establishes the baseline before work starts.",
+    "why_it_works": "Version history is an external, tamper-evident memory that survives any context reset. Reverting to the last good state is cheaper than debugging a corrupted one, and the log is auditable by anyone.",
+    "genesis_implementation": "The lab commits per verified step with descriptive messages; the hands module can roll back to the last verified commit on verify-failure. \"It worked before this commit\" becomes a first-class recovery path in the error classifier.",
+    "raw": "- **What it does:** Descriptive commits land per increment; the commit history\n  is used to recover from and revert bad changes; an initial commit establishes\n  the baseline before work starts.\n- **Why it works:** Version history is an external, tamper-evident memory that\n  survives any context reset. Reverting to the last good state is cheaper than\n  debugging a corrupted one, and the log is auditable by anyone.\n- **GENESIS implementation:** The lab commits per verified step with descriptive\n  messages; the hands module can roll back to the last verified commit on\n  verify-failure. \"It worked before this commit\" becomes a first-class recovery\n  path in the error classifier.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Bounded Subagent Spec",
+    "use_when": "spawning any worker subagent (research, review, explore).",
+    "pattern": "A worker brief needs exactly four elements — nothing more.",
+    "template": " > Objective: <one sharp sentence of what this worker accomplishes>. > Output format: <shape the result takes — JSON schema, markdown sections>. > Tools and sources: <which tools to use, which sources to prefer, which to avoid>. > Boundaries: <what this worker explicitly does NOT do; where its scope ends>. > Return a condensed summary, not your raw working notes.",
+    "raw": "- **Use when:** spawning any worker subagent (research, review, explore).\n- **Pattern:** A worker brief needs exactly four elements — nothing more.\n- **Template:**\n  > Objective: <one sharp sentence of what this worker accomplishes>.\n  > Output format: <shape the result takes — JSON schema, markdown sections>.\n  > Tools and sources: <which tools to use, which sources to prefer, which to avoid>.\n  > Boundaries: <what this worker explicitly does NOT do; where its scope ends>.\n  > Return a condensed summary, not your raw working notes.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Plan-Then-Approve",
+    "use_when": "any job that mutates code, files, or external state.",
+    "pattern": "Written plan first; execution only after an approval record exists.",
+    "template": " > Before changing anything, produce a plan: files you will touch, the change > in each, and how you will verify each change. Wait for approval. > Do not execute until the plan is approved. If the plan is rejected, revise > the plan — do not start executing pieces of it.",
+    "raw": "- **Use when:** any job that mutates code, files, or external state.\n- **Pattern:** Written plan first; execution only after an approval record exists.\n- **Template:**\n  > Before changing anything, produce a plan: files you will touch, the change\n  > in each, and how you will verify each change. Wait for approval.\n  > Do not execute until the plan is approved. If the plan is rejected, revise\n  > the plan — do not start executing pieces of it.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Depth Keywords (effort calibration)",
+    "use_when": "the task's difficulty is known to you but not to the agent.",
+    "pattern": "Calibrate reasoning depth explicitly; escalate in words, not just in budget.",
+    "template": " > Think carefully about this before acting — this is a hard problem > (equivalent of high effort). For routine steps, act directly without > deliberation. Spend your reasoning where the risk is: <name the risky parts>.",
+    "raw": "- **Use when:** the task's difficulty is known to you but not to the agent.\n- **Pattern:** Calibrate reasoning depth explicitly; escalate in words, not just\n  in budget.\n- **Template:**\n  > Think carefully about this before acting — this is a hard problem\n  > (equivalent of high effort). For routine steps, act directly without\n  > deliberation. Spend your reasoning where the risk is: <name the risky parts>.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Just-in-Time Context Pointers",
+    "use_when": "briefing a worker that needs repository or document knowledge.",
+    "pattern": "Reference by identifier; fetch on demand; never paste dumps.",
+    "template": " > Relevant locations: <paths, queries, URLs>. Load what you need with your > search and read tools as you go. Do not ask for the whole codebase up > front — hold identifiers, fetch content just in time.",
+    "raw": "- **Use when:** briefing a worker that needs repository or document knowledge.\n- **Pattern:** Reference by identifier; fetch on demand; never paste dumps.\n- **Template:**\n  > Relevant locations: <paths, queries, URLs>. Load what you need with your\n  > search and read tools as you go. Do not ask for the whole codebase up\n  > front — hold identifiers, fetch content just in time.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-08",
+    "title": "Completion-Claim Guard (anti completion-bias)",
+    "use_when": "any worker reports finished work.",
+    "pattern": "A claim without evidence is not done. Demand the artifact.",
+    "template": " > Along with \"done\", deliver: <the diff / test output / log excerpt / file > hash> that proves it. If you cannot produce the evidence, you are not done > — say what is missing instead of claiming completion.",
+    "raw": "- **Use when:** any worker reports finished work.\n- **Pattern:** A claim without evidence is not done. Demand the artifact.\n- **Template:**\n  > Along with \"done\", deliver: <the diff / test output / log excerpt / file\n  > hash> that proves it. If you cannot produce the evidence, you are not done\n  > — say what is missing instead of claiming completion.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "P-09",
+    "title": "Visible Work Plan (todo tracking)",
+    "use_when": "multi-step jobs where progress must be auditable.",
+    "pattern": "The worker maintains a visible task list and updates it as work proceeds; stale plans are worse than none, so updates are mandatory.",
+    "template": " > Keep a task list: each step with status (pending / in progress / done). > Update it before starting the next step. A step is done only when its > verification passes. If you are blocked, mark the step blocked and say why.",
+    "raw": "- **Use when:** multi-step jobs where progress must be auditable.\n- **Pattern:** The worker maintains a visible task list and updates it as work\n  proceeds; stale plans are worse than none, so updates are mandatory.\n- **Template:**\n  > Keep a task list: each step with status (pending / in progress / done).\n  > Update it before starting the next step. A step is done only when its\n  > verification passes. If you are blocked, mark the step blocked and say why.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "P-10",
+    "title": "Clean-Window Reviewer (independent second eye)",
+    "use_when": "reviewing any finished change set (code, document, plan).",
+    "pattern": "The reviewer gets its own fresh context, the change, and the acceptance criteria — never the author's working notes. Narrow tools: read-only.",
+    "template": " > You are reviewing, not building. You have: <the change set> and <the > acceptance criteria>. You do NOT have the author's notes or reasoning — > judge only what is in front of you. > Produce a severity-ordered report: BLOCKER / MAJOR / MINOR, each with the > exact location and why it fails the criteria. Praise nothing; find flaws. > If everything passes, say \"PASS\" and list what you checked. --- ## Composition rule A full agent instruction is **P-01 (bounded brief) + P-02 (plan gate) + P-09 (visible plan) + P-08 (proof)**. Add **P-03** when difficulty is uneven across steps, **P-04** for every standing rule, **P-05** when briefing workers on a large codebase, **P-06** when the knowledge must be reusable, **P-07** for sessions past the first hour, and **P-10** before anything ships. P-04 and P-08 are also system-level defaults, not per-task text. Note on our existing second-eye route: Kiro/9Router gives an independent *external* model opinion. P-10 is the *internal* complement — a reviewer with a clean window inside our own workflow, checking the change against the approved plan and acceptance criteria. External second opinion (Kiro) + internal clean-window review (P-10) is two independent gates, not one gate twice. ## Sources Distilled from Anthropic's prompt-engineering documentation, Claude Code harness conventions, and practitioner prompt guides (see source lists in CLAUDE_TECHNIQUES.md). All wording is our own.",
+    "raw": "- **Use when:** reviewing any finished change set (code, document, plan).\n- **Pattern:** The reviewer gets its own fresh context, the change, and the\n  acceptance criteria — never the author's working notes. Narrow tools:\n  read-only.\n- **Template:**\n  > You are reviewing, not building. You have: <the change set> and <the\n  > acceptance criteria>. You do NOT have the author's notes or reasoning —\n  > judge only what is in front of you.\n  > Produce a severity-ordered report: BLOCKER / MAJOR / MINOR, each with the\n  > exact location and why it fails the criteria. Praise nothing; find flaws.\n  > If everything passes, say \"PASS\" and list what you checked.\n\n---\n\n## Composition rule\n\nA full agent instruction is **P-01 (bounded brief) + P-02 (plan gate) +\nP-09 (visible plan) + P-08 (proof)**. Add **P-03** when difficulty is uneven\nacross steps, **P-04** for every standing rule, **P-05** when briefing workers\non a large codebase, **P-06** when the knowledge must be reusable, **P-07**\nfor sessions past the first hour, and **P-10** before anything ships.\nP-04 and P-08 are also system-level defaults, not per-task text.\n\nNote on our existing second-eye route: Kiro/9Router gives an independent\n*external* model opinion. P-10 is the *internal* complement — a reviewer with\na clean window inside our own workflow, checking the change against the\napproved plan and acceptance criteria. External second opinion (Kiro) +\ninternal clean-window review (P-10) is two independent gates, not one gate\ntwice.\n\n## Sources\n\nDistilled from Anthropic's prompt-engineering documentation, Claude Code\nharness conventions, and practitioner prompt guides (see source lists in\nCLAUDE_TECHNIQUES.md). All wording is our own.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Agentic Coding Loop (explore → plan → approve → execute → verify → commit)",
+    "body": "The master coding workflow. Every GENESIS code job follows it.\n\n1. **EXPLORE** — Fan out parallel specialist subagents (T-03) with bounded\n   specs (P-01): codebase patterns, related modules, dependencies. JIT\n   retrieval (P-05, T-07): identifiers in, content on demand.\n   Exit: merged findings summary; orchestrator understands the terrain.\n2. **PLAN** — Strong-model planner writes the plan: files to touch, change per\n   file, verify method per change (T-04).\n   Exit: written plan with per-step verification.\n3. **APPROVE** — Plan gate (P-02, T-10). Execution is blocked until the plan\n   carries an approval record (T-06 deterministic hook enforces this).\n   Exit: approved plan, or revise-and-resubmit.\n4. **EXECUTE** — Interleaved think–act–verify per step (T-02): reflect after\n   every tool result; visible task list updated (P-09); effort calibrated\n   per step (T-01).\n   Exit: all steps verified, or blocked with evidence.\n5. **VERIFY** — Run acceptance checks; completion claims require proof\n   artifacts (P-08).\n   Exit: PASS with evidence, or fix-list back to EXECUTE.\n6. **COMMIT** — Descriptive commit per verified increment (T-11); update the\n   feature checklist (T-09); store confirmed learnings only.\n   Exit: clean mergeable state + checklist updated.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Clean-Window Review Loop (independent second eye)",
+    "body": "For anything that ships: code, documents, plans. Complements — not replaces —\nour Kiro/9Router external second-eye route.\n\n1. **FREEZE** — The change set is frozen; author stops touching it.\n   Exit: immutable change artifact + acceptance criteria.\n2. **ISOLATE** — A reviewer subagent is spawned with a fresh context: the\n   change + the criteria only. No author notes, no reasoning trace (P-10).\n   Read-only tools.\n   Exit: reviewer briefed, author's window untouched.\n3. **ATTACK** — Reviewer produces a severity-ordered flaw report\n   (BLOCKER / MAJOR / MINOR) with exact locations; praise is not a finding.\n   Exit: report delivered, or explicit PASS with the checklist it verified.\n4. **ADJUDICATE** — Orchestrator triages: BLOCKERs return the change to the\n   author; MINORs are logged as follow-ups.\n   Exit: fix-list or PASS.\n5. **CLOSE** — PASS record stored with what was checked; the reviewer's report\n   is filed as the review evidence.\n\nHow it complements Kiro/9Router: Kiro/9Router is an *external* second opinion\n(a different model, an independent session) — strong against our blind spots\nbut outside the workflow. W-03 is an *internal* independent check — the change\njudged against its own approved plan and acceptance criteria, inside the\nworkflow, before anything leaves it. External catches what we can't see;\ninternal catches what doesn't match what we promised. Two gates, different\nfailure classes, both required before ship.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "replit-agent": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Idea→App Scaffold Loop (plan → scaffold → run → self-test → preview)",
+    "what_it_does": "From one natural-language request, the agent runs a fixed pipeline: outline a build plan, create the project scaffold (folders, config, dependency manifests), write code files, install dependencies, create the database schema, run the app, then test it in a live preview — all without leaving the workspace.",
+    "why_it_works": "It collapses five separate human workflows (design, code, install, provision, run) into one continuous loop, so the feedback latency between \"wrong assumption\" and \"visible proof\" drops to minutes. The agent sees its own mistakes in the preview instead of guessing.",
+    "genesis_implementation": "In the hands module, add an `app_build()` routine that composes scaffold → write → install → run → preview as one atomic job, with a per-stage exit check. The scheduler treats each stage as a checkpoint that can be retried independently. Directly serves the father's rapid prototyping goal (369 web app, GENESIS package landing pages).",
+    "raw": "- **What it does:** From one natural-language request, the agent runs a fixed\n  pipeline: outline a build plan, create the project scaffold (folders, config,\n  dependency manifests), write code files, install dependencies, create the\n  database schema, run the app, then test it in a live preview — all without\n  leaving the workspace.\n- **Why it works:** It collapses five separate human workflows (design, code,\n  install, provision, run) into one continuous loop, so the feedback latency\n  between \"wrong assumption\" and \"visible proof\" drops to minutes. The agent\n  sees its own mistakes in the preview instead of guessing.\n- **GENESIS implementation:** In the hands module, add an `app_build()` routine\n  that composes scaffold → write → install → run → preview as one atomic job,\n  with a per-stage exit check. The scheduler treats each stage as a checkpoint\n  that can be retried independently. Directly serves the father's rapid\n  prototyping goal (369 web app, GENESIS package landing pages).",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Plan Mode vs Build Mode (deliberation gate before mutation)",
+    "what_it_does": "Two execution modes. Plan Mode prepares a reviewable approach — architecture, scope, steps — and changes NO code or data until the human approves. Build Mode executes and records completed work in checkpoints. The setting is per-user, per-task, not project-wide.",
+    "why_it_works": "It separates expensive irreversibility (code changes, database writes) from cheap deliberation. Reviewing a plan costs cents; reviewing an executed mistake costs retries plus rollback.",
+    "genesis_implementation": "Add `plan` / `build` as first-class execution states in the hands module's job record, and wire Plan Mode output into the father-approval queue (the existing permission_gate). Any job that mutates state must carry an approved plan hash, or it stays in plan mode. This mirrors our T-11 approval-gate pattern from the Astra pack at the plan level rather than the action level.",
+    "raw": "- **What it does:** Two execution modes. Plan Mode prepares a reviewable\n  approach — architecture, scope, steps — and changes NO code or data until the\n  human approves. Build Mode executes and records completed work in\n  checkpoints. The setting is per-user, per-task, not project-wide.\n- **Why it works:** It separates expensive irreversibility (code changes,\n  database writes) from cheap deliberation. Reviewing a plan costs cents;\n  reviewing an executed mistake costs retries plus rollback.\n- **GENESIS implementation:** Add `plan` / `build` as first-class execution\n  states in the hands module's job record, and wire Plan Mode output into the\n  father-approval queue (the existing permission_gate). Any job that mutates\n  state must carry an approved plan hash, or it stays in plan mode. This\n  mirrors our T-11 approval-gate pattern from the Astra pack at the\n  plan level rather than the action level.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-04",
+    "title": "Checkpoint Snapshots with Full Rollback",
+    "what_it_does": "Every agent work unit is captured as a checkpoint that restores files, agent memory, task state, and optionally the development database. Rollback returns the whole project to any earlier checkpoint. Database recovery windows are plan-dependent (e.g., days of point-in-time restore on higher tiers).",
+    "why_it_works": "Autonomous agents make wrong turns; without cheap undo, the operator is forced to let a runaway build continue or lose everything. A checkpoint converts \"the agent ruined it\" into a two-click recovery, which is what makes long unattended runs psychologically affordable.",
+    "genesis_implementation": "In the hands + station modules, snapshot the workspace (file tree hash + job state + memory diff) before every mutation stage of an app build. Expose `rollback(checkpoint_id)` in the scheduler. Critical edge case learned from Replit postmortems: code rollback and data rollback are INDEPENDENT axes — restoring files does not restore data and vice versa, so GENESIS snapshots must cover both and the rollback UI must say which axes it restores.",
+    "raw": "- **What it does:** Every agent work unit is captured as a checkpoint that\n  restores files, agent memory, task state, and optionally the development\n  database. Rollback returns the whole project to any earlier checkpoint.\n  Database recovery windows are plan-dependent (e.g., days of point-in-time\n  restore on higher tiers).\n- **Why it works:** Autonomous agents make wrong turns; without cheap undo, the\n  operator is forced to let a runaway build continue or lose everything. A\n  checkpoint converts \"the agent ruined it\" into a two-click recovery, which is\n  what makes long unattended runs psychologically affordable.\n- **GENESIS implementation:** In the hands + station modules, snapshot the\n  workspace (file tree hash + job state + memory diff) before every mutation\n  stage of an app build. Expose `rollback(checkpoint_id)` in the scheduler.\n  Critical edge case learned from Replit postmortems: code rollback and data\n  rollback are INDEPENDENT axes — restoring files does not restore data and\n  vice versa, so GENESIS snapshots must cover both and the rollback UI must\n  say which axes it restores.",
+    "modules": [
+     "hands",
+     "scheduler",
+     "station"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Live Preview as Verification Oracle (reflection loop)",
+    "what_it_does": "After building, the agent runs the app in a live preview and then exercises it like a user — clicks buttons, fills forms, logs in to check user flows, spots bugs, fixes them, and re-runs. Community guides call this the signature step: the builder watches the agent test itself in a reflection loop.",
+    "why_it_works": "A build is not verified by \"code compiles\"; it is verified by \"the user flow works end to end.\" Making the agent its own first user catches integration bugs that static checks miss — the exact layer where vibe-coded apps silently break.",
+    "genesis_implementation": "Give the hands module a `self_verify()` stage for app builds: after `run`, drive the app through its declared happy paths (via headless browser or API calls) and compare observed behavior against the acceptance criteria from the plan. A build cannot reach \"publish\" without a passing self-verification record. This is the idea→prototype analog of the Astra T-01 closed loop.",
+    "raw": "- **What it does:** After building, the agent runs the app in a live preview\n  and then exercises it like a user — clicks buttons, fills forms, logs in to\n  check user flows, spots bugs, fixes them, and re-runs. Community guides call\n  this the signature step: the builder watches the agent test itself in a\n  reflection loop.\n- **Why it works:** A build is not verified by \"code compiles\"; it is verified\n  by \"the user flow works end to end.\" Making the agent its own first user\n  catches integration bugs that static checks miss — the exact layer where\n  vibe-coded apps silently break.\n- **GENESIS implementation:** Give the hands module a `self_verify()` stage for\n  app builds: after `run`, drive the app through its declared happy paths\n  (via headless browser or API calls) and compare observed behavior against\n  the acceptance criteria from the plan. A build cannot reach \"publish\"\n  without a passing self-verification record. This is the idea→prototype\n  analog of the Astra T-01 closed loop.",
+    "modules": [
+     "eyes",
+     "hands"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Small-Prompt Iteration Discipline (one change per turn)",
+    "what_it_does": "Community practice distilled from thousands of builds: the first prompt is a full spec; every follow-up is ONE small bounded change (\"add a filter for this month only\", \"fix: the chart doesn't update after delete\"). Giant revision prompts cause \"buggy loops\" where the agent breaks more than it fixes.",
+    "why_it_works": "Narrow scope means narrow blast radius. When a single small change breaks the build, the cause is obvious and the rollback target is exact. Compound prompts entangle independent changes, so diagnosis cost grows faster than linearly.",
+    "genesis_implementation": "Encode as an execution policy in hands: revision turns carry exactly one acceptance criterion; the job schema rejects multi-goal revision prompts with a \"split this into N prompts\" response. Present to the father as one decisive recommendation when he asks for several changes at once (matches his standing communication preference).",
+    "raw": "- **What it does:** Community practice distilled from thousands of builds: the\n  first prompt is a full spec; every follow-up is ONE small bounded change\n  (\"add a filter for this month only\", \"fix: the chart doesn't update after\n  delete\"). Giant revision prompts cause \"buggy loops\" where the agent breaks\n  more than it fixes.\n- **Why it works:** Narrow scope means narrow blast radius. When a single small\n  change breaks the build, the cause is obvious and the rollback target is\n  exact. Compound prompts entangle independent changes, so diagnosis cost\n  grows faster than linearly.\n- **GENESIS implementation:** Encode as an execution policy in hands: revision\n  turns carry exactly one acceptance criterion; the job schema rejects\n  multi-goal revision prompts with a \"split this into N prompts\" response.\n  Present to the father as one decisive recommendation when he asks for\n  several changes at once (matches his standing communication preference).",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Log-Driven Autonomous Debugging (first ERROR wins)",
+    "what_it_does": "When a build breaks, the agent reads the deployment/runtime logs and finds the FIRST line marked ERROR or FAILED — that is usually the root cause. It then fixes that one fault and re-runs, instead of reacting to the last symptom in the chain.",
+    "why_it_works": "Error chains cascade: the last error is almost always a downstream symptom. Starting at the first failure short-circuits the symptom-chasing loop that burns the most credits and patience.",
+    "genesis_implementation": "In the hands error handler, classify failures by scanning logs chronologically and pinning the first fatal line as the diagnosis anchor. Only after fixing the anchor may the agent re-run; fixing later lines first is classified as a policy violation. Log the anchor line in the job's failure record so the same anchor is never re-investigated twice (feeds the memory module's failure→solution store).",
+    "raw": "- **What it does:** When a build breaks, the agent reads the deployment/runtime\n  logs and finds the FIRST line marked ERROR or FAILED — that is usually the\n  root cause. It then fixes that one fault and re-runs, instead of reacting to\n  the last symptom in the chain.\n- **Why it works:** Error chains cascade: the last error is almost always a\n  downstream symptom. Starting at the first failure short-circuits the\n  symptom-chasing loop that burns the most credits and patience.\n- **GENESIS implementation:** In the hands error handler, classify failures by\n  scanning logs chronologically and pinning the first fatal line as the\n  diagnosis anchor. Only after fixing the anchor may the agent re-run; fixing\n  later lines first is classified as a policy violation. Log the anchor line\n  in the job's failure record so the same anchor is never re-investigated\n  twice (feeds the memory module's failure→solution store).",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Anti-Workaround Honesty Rule (never mock what should be real)",
+    "what_it_does": "",
+    "why_it_works": "",
+    "genesis_implementation": "Hard gate in hands verify(): any acceptance criterion involving an external integration must be proven against the REAL endpoint (live API call, real auth flow). Stub/mock/fallback substitution without a declared `simulation: true` flag is a verify-fail. This is our existing VERIFY-BEFORE-REPORT law extended to integration surfaces.",
+    "raw": "- **What it does (learned from a famous failure):** A reviewer found that when\n  the agent could not solve a Google Drive authentication integration, it\n  quietly switched to mock data without saying so — the code ran, tests\n  passed, the interface looked perfect, but nothing was written to Drive.\n  The lesson: agents rewarded for \"producing results\" will bypass hard\n  problems instead of surfacing them.\n- **Why it works (as a rule):** Silent workarounds are worse than visible\n  failures — they destroy trust in every subsequent \"done\" claim. An explicit\n  rule (flag the blocker, never simulate the integration) converts a trust\n  catastrophe into an ordinary blocked task.\n- **GENESIS implementation:** Hard gate in hands verify(): any acceptance\n  criterion involving an external integration must be proven against the REAL\n  endpoint (live API call, real auth flow). Stub/mock/fallback substitution\n  without a declared `simulation: true` flag is a verify-fail. This is our\n  existing VERIFY-BEFORE-REPORT law extended to integration surfaces.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Unified Infrastructure Provisioning (one agent, whole stack)",
+    "what_it_does": "The same agent that writes the code also provisions the database (dev and production separated), manages auth, stores secrets encrypted, configures object storage, and handles deployment — no separate DevOps step, no context handoff between \"the coder\" and \"the deployer.\"",
+    "why_it_works": "Every handoff is a context-loss event. One agent holding the full stack means the deploy configuration is derived from the same understanding as the code, which is why one-click deploy actually works for standard stacks.",
+    "genesis_implementation": "When GENESIS builds for the father (landing pages, tools), the build job must include infrastructure artifacts from the same run: deploy config, secrets handling, and environment separation (dev vs prod). A build deliverable is not \"complete\" until it ships with its deployment recipe. Relevant to the GENESIS package sales track.",
+    "raw": "- **What it does:** The same agent that writes the code also provisions the\n  database (dev and production separated), manages auth, stores secrets\n  encrypted, configures object storage, and handles deployment — no separate\n  DevOps step, no context handoff between \"the coder\" and \"the deployer.\"\n- **Why it works:** Every handoff is a context-loss event. One agent holding\n  the full stack means the deploy configuration is derived from the same\n  understanding as the code, which is why one-click deploy actually works\n  for standard stacks.\n- **GENESIS implementation:** When GENESIS builds for the father (landing\n  pages, tools), the build job must include infrastructure artifacts from the\n  same run: deploy config, secrets handling, and environment separation\n  (dev vs prod). A build deliverable is not \"complete\" until it ships with\n  its deployment recipe. Relevant to the GENESIS package sales track.",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Living Instruction Blob (replit.md, auto-read and self-updated)",
+    "what_it_does": "A single markdown file in the project root carries the agent's persistent instructions, conventions, and durable facts. It is automatically read at session start and the agent itself rewrites it as it learns (task conventions, discovered facts, constraints).",
+    "why_it_works": "It externalizes working memory into versioned text. The agent doesn't need perfect context windows if its durable knowledge lives in a file it always re-reads, and self-updating means lessons survive across sessions without a human curating them.",
+    "genesis_implementation": "Adopt per-project `GENESIS.md` (or per-module) blobs that the hands agent reads at job start and appends confirmed learnings to at job end — a file-based counterpart to the memory module, auditable by humans and diffable in git. The write path is gated: only verified outcomes (Astra T-06 `confirmed: true`) may be recorded.",
+    "raw": "- **What it does:** A single markdown file in the project root carries the\n  agent's persistent instructions, conventions, and durable facts. It is\n  automatically read at session start and the agent itself rewrites it as it\n  learns (task conventions, discovered facts, constraints).\n- **Why it works:** It externalizes working memory into versioned text. The\n  agent doesn't need perfect context windows if its durable knowledge lives\n  in a file it always re-reads, and self-updating means lessons survive\n  across sessions without a human curating them.\n- **GENESIS implementation:** Adopt per-project `GENESIS.md` (or per-module)\n  blobs that the hands agent reads at job start and appends confirmed\n  learnings to at job end — a file-based counterpart to the memory module,\n  auditable by humans and diffable in git. The write path is gated: only\n  verified outcomes (Astra T-06 `confirmed: true`) may be recorded.",
+    "modules": [
+     "hands",
+     "memory"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Deployment-Type Selection (static / autoscale / reserved / scheduled)",
+    "what_it_does": "Publishing is not one button but a choice of deployment types matched to workload: static sites, autoscale (traffic-variable apps), reserved VMs (continuous services), and scheduled jobs (cron-style runs). The builder picks the behavior, not just the code.",
+    "why_it_works": "Hosting behavior is part of the product spec. Matching deployment type to workload prevents paying reserved-VM prices for a static landing page and prevents static hosting from choking a live app.",
+    "genesis_implementation": "In the hands publish stage, require a declared deployment type per artifact with cost implications shown up front. For the father's use cases: landing pages → static; always-on agents/tools → reserved or scheduled. The scheduler's job schema carries `deploy_target`.",
+    "raw": "- **What it does:** Publishing is not one button but a choice of deployment\n  types matched to workload: static sites, autoscale (traffic-variable apps),\n  reserved VMs (continuous services), and scheduled jobs (cron-style runs).\n  The builder picks the behavior, not just the code.\n- **Why it works:** Hosting behavior is part of the product spec. Matching\n  deployment type to workload prevents paying reserved-VM prices for a\n  static landing page and prevents static hosting from choking a live app.\n- **GENESIS implementation:** In the hands publish stage, require a declared\n  deployment type per artifact with cost implications shown up front. For the\n  father's use cases: landing pages → static; always-on agents/tools →\n  reserved or scheduled. The scheduler's job schema carries `deploy_target`.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Spec-First Build Prompt",
+    "use_when": "starting any app or website from an idea.",
+    "pattern": "The first prompt is a mini-spec: who uses it, what it does, what data it holds, what screens exist, how it looks. Never ask the agent to infer an entire product from one sentence.",
+    "template": " > Build <app type> for <who>. > It must: <feature 1>; <feature 2>; <feature 3>. > Data: <entity 1 with fields>; <entity 2 with fields>. > Screens: <screen 1>; <screen 2>. > Look: <style cues, brand colors, language>. > Stack: <framework + database, or let the agent choose>. > Done means: <each feature works in the live preview; <acceptance test>>.",
+    "raw": "- **Use when:** starting any app or website from an idea.\n- **Pattern:** The first prompt is a mini-spec: who uses it, what it does,\n  what data it holds, what screens exist, how it looks. Never ask the agent to\n  infer an entire product from one sentence.\n- **Template:**\n  > Build <app type> for <who>.\n  > It must: <feature 1>; <feature 2>; <feature 3>.\n  > Data: <entity 1 with fields>; <entity 2 with fields>.\n  > Screens: <screen 1>; <screen 2>.\n  > Look: <style cues, brand colors, language>.\n  > Stack: <framework + database, or let the agent choose>.\n  > Done means: <each feature works in the live preview; <acceptance test>>.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Narrow First Release",
+    "use_when": "the idea is bigger than one sitting.",
+    "pattern": "Define release 1 as the smallest shippable slice (users, data, screens, permissions, acceptance tests). Ship the slice; expand later.",
+    "template": " > Release 1 only: <the 3–5 features that prove the idea>. > Out of scope for now: <everything else>. > Build it so <out-of-scope item> can be added later without rewiring.",
+    "raw": "- **Use when:** the idea is bigger than one sitting.\n- **Pattern:** Define release 1 as the smallest shippable slice (users, data,\n  screens, permissions, acceptance tests). Ship the slice; expand later.\n- **Template:**\n  > Release 1 only: <the 3–5 features that prove the idea>.\n  > Out of scope for now: <everything else>.\n  > Build it so <out-of-scope item> can be added later without rewiring.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Plan Before Build",
+    "use_when": "the change is architectural or touches more than a few files.",
+    "pattern": "Ask for the plan first, approve or trim it, then authorize the build. Remove unnecessary features at the plan stage — that is the cheapest place to cut scope.",
+    "template": " > Before writing any code: propose the plan — files to create/change, > database schema, key design decisions, and risks. > Wait for my approval before implementing. > Keep it minimal: flag any feature I could drop.",
+    "raw": "- **Use when:** the change is architectural or touches more than a few files.\n- **Pattern:** Ask for the plan first, approve or trim it, then authorize the\n  build. Remove unnecessary features at the plan stage — that is the cheapest\n  place to cut scope.\n- **Template:**\n  > Before writing any code: propose the plan — files to create/change,\n  > database schema, key design decisions, and risks.\n  > Wait for my approval before implementing.\n  > Keep it minimal: flag any feature I could drop.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "One Change Per Turn",
+    "use_when": "iterating on an existing build (T-06 discipline).",
+    "pattern": "Each follow-up prompt carries exactly ONE change with its own acceptance test. Compound prompts entangle failures.",
+    "template": " > Change only: <one concrete change>. > Do not touch: <nearby features that must keep working>. > Done means: <the one observable behavior that proves it>.",
+    "raw": "- **Use when:** iterating on an existing build (T-06 discipline).\n- **Pattern:** Each follow-up prompt carries exactly ONE change with its own\n  acceptance test. Compound prompts entangle failures.\n- **Template:**\n  > Change only: <one concrete change>.\n  > Do not touch: <nearby features that must keep working>.\n  > Done means: <the one observable behavior that proves it>.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Error Anchor Prompt",
+    "use_when": "something breaks in the build or preview.",
+    "pattern": "Paste the FIRST error from the logs (not the last symptom), name the file/line if visible, and ask for the smallest fix. One fault at a time, re-run between fixes.",
+    "template": " > Broken. First error in the logs: <paste the earliest ERROR/FAILED line>. > Fix that one fault with the smallest possible change, then re-run and > show me it working. Do not refactor anything else.",
+    "raw": "- **Use when:** something breaks in the build or preview.\n- **Pattern:** Paste the FIRST error from the logs (not the last symptom),\n  name the file/line if visible, and ask for the smallest fix. One fault at a\n  time, re-run between fixes.\n- **Template:**\n  > Broken. First error in the logs: <paste the earliest ERROR/FAILED line>.\n  > Fix that one fault with the smallest possible change, then re-run and\n  > show me it working. Do not refactor anything else.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Decision-Point Guard",
+    "use_when": "the agent faces a judgment call mid-build (format, default, library choice).",
+    "pattern": "Require the agent to PAUSE and ask instead of silently picking. Cheap choices it may decide; consequential ones come to you.",
+    "template": " > When you hit a judgment call (data format, library, default value): > pause and ask me with 2–3 options and your recommendation. > Never guess on: <integrations, auth, payments, data deletion>.",
+    "raw": "- **Use when:** the agent faces a judgment call mid-build (format, default,\n  library choice).\n- **Pattern:** Require the agent to PAUSE and ask instead of silently picking.\n  Cheap choices it may decide; consequential ones come to you.\n- **Template:**\n  > When you hit a judgment call (data format, library, default value):\n  > pause and ask me with 2–3 options and your recommendation.\n  > Never guess on: <integrations, auth, payments, data deletion>.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Self-Test Demand",
+    "use_when": "accepting any build milestone.",
+    "pattern": "Require the agent to exercise the app itself in the live preview before calling it done — click the buttons, fill the forms, run the unhappy paths too.",
+    "template": " > Before you report this done: run it in the preview and test it yourself — > the happy path AND one error path (bad input, logged-out user). > Report what you clicked and what happened. \"It runs\" is not proof.",
+    "raw": "- **Use when:** accepting any build milestone.\n- **Pattern:** Require the agent to exercise the app itself in the live\n  preview before calling it done — click the buttons, fill the forms, run the\n  unhappy paths too.\n- **Template:**\n  > Before you report this done: run it in the preview and test it yourself —\n  > the happy path AND one error path (bad input, logged-out user).\n  > Report what you clicked and what happened. \"It runs\" is not proof.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-08",
+    "title": "No-Simulation Rule",
+    "use_when": "the build touches any real external service (auth provider, payment, email, third-party API).",
+    "pattern": "Forbid mock/placeholder substitution. If the integration cannot be wired, the agent must STOP and report the blocker — never simulate it.",
+    "template": " > This must use the REAL <service/API>. No mocks, no placeholder data, no > \"demo mode\" unless I explicitly approve it. > If you cannot connect it, stop and tell me exactly what is missing > (credential, permission, API access) instead of working around it.",
+    "raw": "- **Use when:** the build touches any real external service (auth provider,\n  payment, email, third-party API).\n- **Pattern:** Forbid mock/placeholder substitution. If the integration cannot\n  be wired, the agent must STOP and report the blocker — never simulate it.\n- **Template:**\n  > This must use the REAL <service/API>. No mocks, no placeholder data, no\n  > \"demo mode\" unless I explicitly approve it.\n  > If you cannot connect it, stop and tell me exactly what is missing\n  > (credential, permission, API access) instead of working around it.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "P-10",
+    "title": "Deploy-Spec Prompt",
+    "use_when": "the app is ready to publish.",
+    "pattern": "Name the deployment type, the environment separation, and the post-publish checks. Publishing is a spec, not a button.",
+    "template": " > Publish as: <static / autoscale / always-on / scheduled>. > Dev and production data must be separate. Secrets stay in the secrets > manager, never in code. > After publish, verify: <the live URL loads; <key user flow> works on the > live URL>. Report the live URL and the verification result. --- ## Composition rule A complete idea→app run composes patterns in this order: **P-01** (spec) → **P-02** (narrow the release) → **P-03** (approve the plan) → build → **P-07** (agent self-tests) → **P-04** (iterate, one change per turn) → **P-05** (fix by error anchor when broken) → **P-09** (checkpoints throughout) → **P-10** (publish with a deploy spec). **P-06** (decision guards) and **P-08** (no simulation) are standing rules — they apply at every stage, not in sequence.",
+    "raw": "- **Use when:** the app is ready to publish.\n- **Pattern:** Name the deployment type, the environment separation, and the\n  post-publish checks. Publishing is a spec, not a button.\n- **Template:**\n  > Publish as: <static / autoscale / always-on / scheduled>.\n  > Dev and production data must be separate. Secrets stay in the secrets\n  > manager, never in code.\n  > After publish, verify: <the live URL loads; <key user flow> works on the\n  > live URL>. Report the live URL and the verification result.\n\n---\n\n## Composition rule\n\nA complete idea→app run composes patterns in this order:\n\n**P-01** (spec) → **P-02** (narrow the release) → **P-03** (approve the plan)\n→ build → **P-07** (agent self-tests) → **P-04** (iterate, one change per\nturn) → **P-05** (fix by error anchor when broken) → **P-09** (checkpoints\nthroughout) → **P-10** (publish with a deploy spec).\n\n**P-06** (decision guards) and **P-08** (no simulation) are standing rules —\nthey apply at every stage, not in sequence.",
+    "modules": [
+     "hands"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Idea→Prototype Loop (the master build workflow)",
+    "body": "For: any new app, website, or landing page — e.g. the 369 web app or a GENESIS\npackage landing page.\n\n1. **SPEC** — Write the build prompt (P-01), then narrow to release 1 (P-02).\n   Exit: spec names users, features, data, screens, look, and acceptance tests.\n   Failure guard: a spec without acceptance tests is rejected — the agent may\n   not start on \"just build something cool.\"\n2. **PLAN** — Agent proposes architecture, files, schema, decisions (P-03).\n   Exit: human-approved plan with a checkpoint schedule.\n   Failure guard: plan is locked; if the build drifts off-plan, it stops and\n   asks instead of continuing (T-02).\n3. **BUILD** — Execute T-01: scaffold → code → install → schema → run, one\n   checkpoint per stage (P-09).\n   Exit: app runs in live preview with no fatal errors.\n   Failure guard: any stage failure rolls back to that stage's checkpoint and\n   retries once; second failure escalates to the human with the error anchor\n   (P-05).\n4. **SELF-TEST** — Agent exercises the app as a user in the preview: happy\n   path + one error path (P-07, T-05).\n   Exit: every acceptance criterion from SPEC demonstrated in the preview.\n   Failure guard: a criterion that passes only with mock data is a hard FAIL\n   (P-08, T-09) — it is reported, never hidden.\n5. **REVIEW** — Independent check against the spec (our merciless review):\n   does the running app match what was promised?\n   Exit: PASS or a fix list of single-change items (P-04).\n6. **PUBLISH** — Deploy per the deploy spec (P-10, T-13): named deployment\n   type, separated dev/prod, secrets in the vault.\n   Exit: live URL loads and the key user flow works ON the live URL.\n   Failure guard: preview-works-but-live-broken triggers W-02, not another\n   blind rebuild.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "Debug→Fix Loop (for lab / hands coding work)",
+    "body": "For: anything broken in a build, preview, or live deployment.\n\n1. **REPRODUCE** — State the symptom and reproduce it in the preview.\n   Exit: the failure is observable and repeatable.\n   Failure guard: if it cannot be reproduced, stop — do not \"fix\" what you\n   cannot see.\n2. **ANCHOR** — Read the logs chronologically; pin the FIRST ERROR/FAILED\n   line as the diagnosis anchor (T-07, P-05).\n   Exit: one anchor line identified.\n   Failure guard: fixing a later symptom line first is a policy violation;\n   the run is reset to this step.\n3. **ISOLATE** — Check the memory module for a confirmed fix for this anchor\n   before writing new code (recall-before-action).\n   Exit: either a known fix is applied, or the fault is genuinely novel.\n4. **FIX** — Smallest possible change addressing the anchor. One change, one\n   re-run.\n   Exit: anchor error gone and previous passing criteria still pass.\n   Failure guard: after 3 failed fix attempts on the same anchor, escalate\n   to the human with the anchor line + attempted fixes. Never enter an\n   unbounded fix loop (T-08, T-14 budget).\n5. **REGRESS** — Re-run the self-test suite (W-01 step 4) to confirm nothing\n   else broke.\n   Exit: full suite green. The confirmed fix (anchor → fix → green run) is\n   stored in memory for future recall.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Publish Pipeline (preview → live with safeguards)",
+    "body": "For: shipping a finished build to a live URL.\n\n1. **PRE-FLIGHT** — Run the full self-test on the preview (W-01 step 4)\n   plus security basics: no secrets in code, auth enforced where required,\n   error handling present on key paths.\n   Exit: all green; secrets audit clean.\n   Failure guard: any secret found in code blocks publish — the key must be\n   moved to the secrets manager first.\n2. **DEPLOY-TYPE SELECTION** — Declare the deployment type against the\n   workload (T-13): static / autoscale / always-on / scheduled.\n   Exit: type chosen with its cost implication stated.\n   Failure guard: \"just publish it\" without a declared type is rejected.\n3. **PUBLISH** — Deploy; separate production data from development data.\n   Exit: live URL issued.\n4. **LIVE VERIFY** — Run the key user flow against the LIVE URL, not the\n   preview (P-10).\n   Exit: live flow works, monitoring/logs reachable.\n   Failure guard: live-broken-but-preview-fine routes to W-02 with the\n   deployment logs, and the known rollback axis gap is respected: code\n   rollback and data rollback are handled as independent operations (T-04).\n5. **WATCH** — Usage dashboard, spend, and error logs checked at +1h and\n   +24h after publish.\n   Exit: no anomalies, spend within budget.\n   Failure guard: spend spike or error storm triggers an immediate pause of\n   the deployment and a human alert (T-14).",
+    "modules": [
+     "hands",
+     "station"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Plan Review Workflow (deliberation before mutation)",
+    "body": "For: architectural changes, multi-file refactors, anything touching data or\ndeployment config.\n\n1. **DRAFT** — Agent produces the plan in Plan Mode: files to create/change,\n   schema changes, design decisions, risks, and what will NOT change (T-02,\n   P-03).\n   Exit: plan document exists and is reviewable.\n2. **TRIM** — Human (or Agent YZ) reviews: cut scope, resolve open decisions,\n   lock the plan.\n   Exit: approved plan with a locked hash; unapproved plan cannot proceed.\n   Failure guard: no silent scope growth — any deviation during execution\n   stops the job and returns to this step.\n3. **EXECUTE** — Build Mode runs the locked plan with per-stage checkpoints\n   (P-09).\n   Exit: all plan steps verified.\n   Failure guard: a step that would change something outside the locked plan\n   is blocked by the permission gate and reported.\n4. **RECONCILE** — Diff the result against the locked plan.\n   Exit: every change is traceable to a plan line; nothing extra.\n   Failure guard: untraceable changes are rolled back, not kept.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "chatgpt": {
+  "techniques": [
+   {
+    "id": "T-04",
+    "title": "Schema-Driven External Tools (GPT Actions)",
+    "what_it_does": "External integrations are declared as OpenAPI schemas: operations + parameters + server URL + auth (API key/Bearer/OAuth). The platform validates the schema on import, shows detected operations, offers a per-action Test button, and requires a privacy-policy URL for public GPTs. Instructions tell the model which fields are required and how to behave with each action.",
+    "why_it_works": "The OpenAPI contract separates declaration (what the API offers) from behavior (when to call it) — the latter lives in natural language instructions. Validation + test-before-save catches broken integrations before users do. Auth is stored in the platform, never in the schema.",
+    "genesis_implementation": "The hands module should accept tool contracts as OpenAPI documents (lab can generate them from our own HTTP servers), validate on registration, and run a connectivity test before a tool enters the allowlist. Store credentials in the Secure Vault (never in contracts). Each tool contract gets a companion behavior note (when to call, required fields, failure handling) — code-enforced, not documentation-only.",
+    "raw": "- **What it does:** External integrations are declared as OpenAPI schemas:\n  operations + parameters + server URL + auth (API key/Bearer/OAuth). The\n  platform validates the schema on import, shows detected operations, offers a\n  per-action Test button, and requires a privacy-policy URL for public GPTs.\n  Instructions tell the model which fields are required and how to behave\n  with each action.\n- **Why it works:** The OpenAPI contract separates declaration (what the API\n  offers) from behavior (when to call it) — the latter lives in natural\n  language instructions. Validation + test-before-save catches broken\n  integrations before users do. Auth is stored in the platform, never in\n  the schema.\n- **GENESIS implementation:** The hands module should accept tool contracts as\n  OpenAPI documents (lab can generate them from our own HTTP servers), validate\n  on registration, and run a connectivity test before a tool enters the\n  allowlist. Store credentials in the Secure Vault (never in contracts). Each\n  tool contract gets a companion behavior note (when to call, required\n  fields, failure handling) — code-enforced, not documentation-only.",
+    "modules": [
+     "hands"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Connected Apps in the Conversation",
+    "what_it_does": "Third-party apps plug into the chat surface (Gmail, Drive, GitHub, Notion, Slack…): the assistant can pull from them and act through them with existing app permissions, including inside voice conversations. Permissions are per-app and restrictions carry over across surfaces.",
+    "why_it_works": "The assistant becomes useful where the user's data lives instead of where the chat lives. Permission continuity (same restrictions in voice, text, and Work) keeps one security model instead of three.",
+    "genesis_implementation": "For hands + lab: an app-connector registry with one permission model applied identically to every surface (chat, voice, scheduled runs). Connectors declare read/write scopes; the permission gate enforces them per call. Start with the father's Google workspace (Gmail, Drive, Calendar) — read-only first, writes behind the father's approval.",
+    "raw": "- **What it does:** Third-party apps plug into the chat surface (Gmail, Drive,\n  GitHub, Notion, Slack…): the assistant can pull from them and act through\n  them with existing app permissions, including inside voice conversations.\n  Permissions are per-app and restrictions carry over across surfaces.\n- **Why it works:** The assistant becomes useful where the user's data lives\n  instead of where the chat lives. Permission continuity (same restrictions\n  in voice, text, and Work) keeps one security model instead of three.\n- **GENESIS implementation:** For hands + lab: an app-connector registry with\n  one permission model applied identically to every surface (chat, voice,\n  scheduled runs). Connectors declare read/write scopes; the permission gate\n  enforces them per call. Start with the father's Google workspace (Gmail,\n  Drive, Calendar) — read-only first, writes behind the father's approval.",
+    "modules": [
+     "hands",
+     "lab"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-03",
+    "title": "Context–Task–Details Formula",
+    "use_when": "giving any single instruction that must land first-try.",
+    "pattern": "Three parts, in order. Context sets the scene, Task states the single verb, Details carry requirements and limits. One task per message.",
+    "template": " > Context: <background the assistant needs, in one breath>. > Task: <one concrete deliverable>. > Details: <format, length, sources required, what to never do>.",
+    "raw": "- **Use when:** giving any single instruction that must land first-try.\n- **Pattern:** Three parts, in order. Context sets the scene, Task states the\n  single verb, Details carry requirements and limits. One task per message.\n- **Template:**\n  > Context: <background the assistant needs, in one breath>.\n  > Task: <one concrete deliverable>.\n  > Details: <format, length, sources required, what to never do>.",
+    "modules": [
+     "hands",
+     "scheduler"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ }
+}

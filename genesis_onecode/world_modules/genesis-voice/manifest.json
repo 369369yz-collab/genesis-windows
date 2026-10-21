@@ -1,0 +1,30 @@
+{
+ "name": "genesis-voice",
+ "version": "1.0.0",
+ "description": "Voice command pipeline: mic to STT bridge to Persian intent parsing to hands execution. Text output only, no TTS.",
+ "entry": "voice_facade.py",
+ "factory": "VoiceAssistantModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "UI_SURFACE.md",
+  "requirements.txt",
+  "voice_assistant.py",
+  "voice_facade.py",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "c1307ae68713e9ada3a365ad3350658550442660b178734592be13201828eff7",
+  "UI_SURFACE.md": "7e1884d01c1831d59e29922dcdc86f40c75d9c3cadf704893745c7047d9f5929",
+  "requirements.txt": "c9b70219d3615fbedeb9ddf6dd3772f782e7bc82c11d1a86319b5266d4815149",
+  "voice_assistant.py": "18710e81ff13b825fbc2907d2a11a7a5218be866004483f433e61181aa41928d",
+  "voice_facade.py": "d273e758a37ca2412b22dfc855f1dca3a1864145fedd6efc9377343cc71a5474",
+  "knowledge/__init__.py": "e659b2c93ef964b92b0bcaf388d6b9dc5c0640bf3eafd6a528288398bad62039",
+  "knowledge/registry.py": "dc698d0971b9c883399a6514d65a0e0ce5e713128ee6157602407ee99bcdb0f9",
+  "knowledge/packs.json": "cff1c4daef43f6542e565017e2702c21e3711b6efc9cc513c8b3c21dcad9391d",
+  "knowledge/test_knowledge.py": "994f3bd9b8db55f1f17880e90880d4c6167be3e0957b823fb3d6788eed03e1f2"
+ }
+}

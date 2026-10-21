@@ -1,0 +1,736 @@
+{
+ "heygen": {
+  "techniques": [
+   {
+    "id": "T-05",
+    "title": "Short-Sample Voice Cloning (2+ minutes → reusable voice model)",
+    "what_it_does": "A voice model is built from a short recording (roughly two minutes), confirmed through an in-product consent acknowledgment with explicit authorization statements, and then reused across all videos and across the platform's language coverage.",
+    "why_it_works": "Speaker identity is a compact embedding; a few minutes of clean speech is enough to capture it. Separating the speaker embedding from the language synthesis is what makes multilingual cloning possible.",
+    "genesis_implementation": "",
+    "raw": "- **What it does:** A voice model is built from a short recording (roughly\n  two minutes), confirmed through an in-product consent acknowledgment with\n  explicit authorization statements, and then reused across all videos and\n  across the platform's language coverage.\n- **Why it works:** Speaker identity is a compact embedding; a few minutes of\n  clean speech is enough to capture it. Separating the speaker embedding from\n  the language synthesis is what makes multilingual cloning possible.\n- **GENESIS implementation (product capability only, NOT for 369 content):**\n  The voice module should treat speaker identity as a portable embedding\n  produced from a short enrollment sample, with mandatory consent capture\n  before storage. Keep the NO AI VOICE LAW enforced at the publish gate: any\n  content path can query this capability, but the 369 publish path must refuse\n  it.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Real-Time Conversational Stack (WebRTC, full vs lite)",
+    "what_it_does": "A live-avatar session streams over WebRTC: the user's speech is transcribed, a language model generates a response, speech synthesis produces audio, and the avatar renders synchronized lip movement and expressions in real time. Two integration modes exist: full (the platform manages speech recognition, language model, synthesis, and rendering) and lite (the operator brings their own speech/language/ synthesis stack; the platform supplies only the avatar rendering layer).",
+    "why_it_works": "The rendering layer is cleanly separable from the conversation stack. Full mode optimizes for speed of integration; lite mode optimizes for control — both share the same render endpoint.",
+    "genesis_implementation": "",
+    "raw": "- **What it does:** A live-avatar session streams over WebRTC: the user's\n  speech is transcribed, a language model generates a response, speech\n  synthesis produces audio, and the avatar renders synchronized lip movement\n  and expressions in real time. Two integration modes exist: full (the\n  platform manages speech recognition, language model, synthesis, and\n  rendering) and lite (the operator brings their own speech/language/\n  synthesis stack; the platform supplies only the avatar rendering layer).\n- **Why it works:** The rendering layer is cleanly separable from the\n  conversation stack. Full mode optimizes for speed of integration; lite mode\n  optimizes for control — both share the same render endpoint.\n- **GENESIS implementation (product capability only):** Design the avatar\n  host's real-time path as a pluggable rendering layer with the conversation\n  stack (transcription → reasoning → synthesis) behind an interface. Ship\n  the full path first; leave the lite path as a documented extension point.\n  Voice synthesis here is subject to the same NO AI VOICE LAW guardrail as\n  T-05.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [],
+  "workflows": [],
+  "guardrails": []
+ },
+ "synthesia": {
+  "techniques": [],
+  "prompt_patterns": [
+   {
+    "id": "P-03",
+    "title": "Voice-Persona Spec (product capability only)",
+    "use_when": "choosing how the avatar speaks (language, accent, tone).",
+    "pattern": "Specify the persona before generating: language + regional accent + delivery tone + pacing. Preview on one slide before committing to the whole video.",
+    "template": " > Voice: language <X>, accent <region>, tone <calm|energetic|formal| > friendly>, pace <normal|slow>. > Preview line: \"<one sentence with the hard words in it>\". > Approved only after the preview passes on a phone speaker.",
+    "raw": "- **Use when:** choosing how the avatar speaks (language, accent, tone).\n- **Pattern:** Specify the persona before generating: language + regional\n  accent + delivery tone + pacing. Preview on one slide before committing\n  to the whole video.\n- **Template:**\n  > Voice: language <X>, accent <region>, tone <calm|energetic|formal|\n  > friendly>, pace <normal|slow>.\n  > Preview line: \"<one sentence with the hard words in it>\".\n  > Approved only after the preview passes on a phone speaker.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "elevenlabs": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Speaker Encoder → Embedding Pipeline",
+    "what_it_does": "A speaker encoder (neural network trained on thousands of voices) extracts a compact speaker embedding from a short reference clip — the acoustic signature (tone, pitch distribution, formant structure, rhythmic pattern). An autoregressive transformer then generates speech tokens conditioned on the text AND the embedding; a vocoder converts tokens to waveform.",
+    "why_it_works": "It decouples \"who is speaking\" (embedding) from \"what is said\" (text). The same embedding steers every utterance, so identity holds without retraining per sentence.",
+    "genesis_implementation": "In the voice module, design the synthesis pipeline as: enrollment (record → encoder → store embedding) separate from rendering (text + embedding → tokens → waveform). Never bake the voice into the model weights for the instant tier; embeddings are lightweight, portable, and deletable (privacy + LAW compliance).",
+    "raw": "- **What it does:** A speaker encoder (neural network trained on thousands of\n  voices) extracts a compact speaker embedding from a short reference clip —\n  the acoustic signature (tone, pitch distribution, formant structure,\n  rhythmic pattern). An autoregressive transformer then generates speech tokens\n  conditioned on the text AND the embedding; a vocoder converts tokens to\n  waveform.\n- **Why it works:** It decouples \"who is speaking\" (embedding) from \"what is\n  said\" (text). The same embedding steers every utterance, so identity holds\n  without retraining per sentence.\n- **GENESIS implementation:** In the voice module, design the synthesis\n  pipeline as: enrollment (record → encoder → store embedding) separate from\n  rendering (text + embedding → tokens → waveform). Never bake the voice into\n  the model weights for the instant tier; embeddings are lightweight, portable,\n  and deletable (privacy + LAW compliance).",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Two-Tier Cloning: Instant (embedding) vs Professional (fine-tuned)",
+    "what_it_does": "Instant Voice Cloning (IVC) works off the embedding alone — ~10 seconds to ~2 minutes of audio, usable in seconds-to-a-minute. Professional Voice Cloning (PVC) fine-tunes a dedicated model on 30+ minutes of clean audio, taking ~3–6 hours, and captures breath patterns, micro-pauses, and emotional range far more faithfully.",
+    "why_it_works": "Tiering trades fidelity for setup cost. Instant covers \"try it now\"; professional covers \"this voice will speak for thousands of sentences.\" Rule of thumb from practitioners: use IVC to learn what the source recording captures, move to PVC when the quick clone can't hold the accent, timbre, or delivery for repeated use.",
+    "genesis_implementation": "Voice module enrollment offers both: (1) fast path — few samples, embedding-only, immediate usability; (2) deep path — long recording session, fine-tuned model, QC'd before activation. A voice is marked `tier: instant | professional` in its metadata; the scheduler prefers professional-tier voices for long sessions (narration) and instant for experiments.",
+    "raw": "- **What it does:** Instant Voice Cloning (IVC) works off the embedding alone —\n  ~10 seconds to ~2 minutes of audio, usable in seconds-to-a-minute. Professional\n  Voice Cloning (PVC) fine-tunes a dedicated model on 30+ minutes of clean\n  audio, taking ~3–6 hours, and captures breath patterns, micro-pauses, and\n  emotional range far more faithfully.\n- **Why it works:** Tiering trades fidelity for setup cost. Instant covers\n  \"try it now\"; professional covers \"this voice will speak for thousands of\n  sentences.\" Rule of thumb from practitioners: use IVC to learn what the\n  source recording captures, move to PVC when the quick clone can't hold the\n  accent, timbre, or delivery for repeated use.\n- **GENESIS implementation:** Voice module enrollment offers both: (1) fast\n  path — few samples, embedding-only, immediate usability; (2) deep path —\n  long recording session, fine-tuned model, QC'd before activation. A voice is\n  marked `tier: instant | professional` in its metadata; the scheduler\n  prefers professional-tier voices for long sessions (narration) and instant\n  for experiments.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Inline Expression Tags (stage directions in text)",
+    "what_it_does": "Writers put performance directions directly in the script in square brackets — e.g. `[laughs]`, `[whispers]`, `[sighs]`, `[said angrily in French accent]`, background cues like `[light rain]` — and the model performs them. Tags can be stacked and sequenced; v4 also exposes IPA phonetic control for exact pronunciation.",
+    "why_it_works": "It moves direction from the settings panel into the writer's flow. The script IS the performance brief; a tag read in context lets the model adjust tone and pacing from surrounding text, not just from the tag.",
+    "genesis_implementation": "Voice module script schema supports inline tags. The renderer's tag grammar is versioned and documented; unknown tags fail CLOSED (render without the tag + warn) rather than being hallucinated into random prosody. Teach the scheduler to generate tags for GENESIS's own speech — e.g. `[calm tone]` for reminders, `[warm tone]` for greetings.",
+    "raw": "- **What it does:** Writers put performance directions directly in the script\n  in square brackets — e.g. `[laughs]`, `[whispers]`, `[sighs]`,\n  `[said angrily in French accent]`, background cues like `[light rain]` —\n  and the model performs them. Tags can be stacked and sequenced; v4 also\n  exposes IPA phonetic control for exact pronunciation.\n- **Why it works:** It moves direction from the settings panel into the\n  writer's flow. The script IS the performance brief; a tag read in context\n  lets the model adjust tone and pacing from surrounding text, not just from\n  the tag.\n- **GENESIS implementation:** Voice module script schema supports inline tags.\n  The renderer's tag grammar is versioned and documented; unknown tags fail\n  CLOSED (render without the tag + warn) rather than being hallucinated into\n  random prosody. Teach the scheduler to generate tags for GENESIS's own\n  speech — e.g. `[calm tone]` for reminders, `[warm tone]` for greetings.",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-04",
+    "title": "Explicit Expressiveness Knobs (stability, similarity, style, speed)",
+    "what_it_does": "Four sliders tune delivery per voice: stability (consistency vs. expressiveness), similarity boost (fidelity to the source voice), style exaggeration (amplifying the speaker's style, at added latency), speed (0.7–1.2 range; extremes degrade quality).",
+    "why_it_works": "\"One voice\" is not one output — the same voice at stability 0.4 vs 0.8 serves different jobs (conversation vs. narration). Named presets exist per use case: narration (stability 0.5, style 0), conversational (0.4, style 0.3), cloned voice (similarity 0.85, style 0).",
+    "genesis_implementation": "Voice module exposes these as per-job parameters with safe defaults and hard ranges. The scheduler selects the preset by intent: alerts → conversational; long-form reading → narration. Settings are logged per render so a QC failure can be traced to the exact knob combination.",
+    "raw": "- **What it does:** Four sliders tune delivery per voice: stability\n  (consistency vs. expressiveness), similarity boost (fidelity to the source\n  voice), style exaggeration (amplifying the speaker's style, at added\n  latency), speed (0.7–1.2 range; extremes degrade quality).\n- **Why it works:** \"One voice\" is not one output — the same voice at\n  stability 0.4 vs 0.8 serves different jobs (conversation vs. narration).\n  Named presets exist per use case: narration (stability 0.5, style 0),\n  conversational (0.4, style 0.3), cloned voice (similarity 0.85, style 0).\n- **GENESIS implementation:** Voice module exposes these as per-job\n  parameters with safe defaults and hard ranges. The scheduler selects the\n  preset by intent: alerts → conversational; long-form reading → narration.\n  Settings are logged per render so a QC failure can be traced to the exact\n  knob combination.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Chunked WebSocket Streaming (sentence-boundary flush)",
+    "what_it_does": "The TTS WebSocket (`stream-input` endpoint) accepts a space as Beginning-of-Stream, receives text chunks as they are generated, and emits base64 audio frames as each sentence boundary is reached (`. ? !`), never waiting for the full LLM output. Time-to-first-audio: ~150–300 ms with Flash v2.5; v4 Turbo speaks in ~150 ms.",
+    "why_it_works": "The LLM and the vocoder overlap in time. Playing audio before the sentence is finished decouples perceived latency from total generation time — conversation feels real-time.",
+    "genesis_implementation": "The voice module's conversational path runs on a persistent WebSocket with chunked text input and sentence-boundary flush. Pre-rendered narration (audiobooks, notifications) uses the cheaper REST path — the routing rule is REST vs streaming by interactivity need.",
+    "raw": "- **What it does:** The TTS WebSocket (`stream-input` endpoint) accepts a\n  space as Beginning-of-Stream, receives text chunks as they are generated,\n  and emits base64 audio frames as each sentence boundary is reached (`. ? !`),\n  never waiting for the full LLM output. Time-to-first-audio: ~150–300 ms\n  with Flash v2.5; v4 Turbo speaks in ~150 ms.\n- **Why it works:** The LLM and the vocoder overlap in time. Playing audio\n  before the sentence is finished decouples perceived latency from total\n  generation time — conversation feels real-time.\n- **GENESIS implementation:** The voice module's conversational path runs on\n  a persistent WebSocket with chunked text input and sentence-boundary flush.\n  Pre-rendered narration (audiobooks, notifications) uses the cheaper REST\n  path — the routing rule is REST vs streaming by interactivity need.",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Context-Aware Multi-Segment Continuity",
+    "what_it_does": "Long renders accept `previous_text` / `next_text` context hints around each chunk; v4 improved request stitching so voices keep their identity over chapters — the failure mode it fixes is voice drift across long passages.",
+    "why_it_works": "Prosody is contextual — how a sentence starts depends on what came before. Stitching hints give the model the missing boundary information so adjacent chunks sound like one continuous performance.",
+    "genesis_implementation": "Any long-form render in the voice module is generated as overlapping-window chunks with context hints, then cross-faded at stitch points. A QC check compares embedding distance across chunk boundaries; drift above threshold triggers a re-render of the join.",
+    "raw": "- **What it does:** Long renders accept `previous_text` / `next_text` context\n  hints around each chunk; v4 improved request stitching so voices keep their\n  identity over chapters — the failure mode it fixes is voice drift across\n  long passages.\n- **Why it works:** Prosody is contextual — how a sentence starts depends on\n  what came before. Stitching hints give the model the missing boundary\n  information so adjacent chunks sound like one continuous performance.\n- **GENESIS implementation:** Any long-form render in the voice module is\n  generated as overlapping-window chunks with context hints, then\n  cross-faded at stitch points. A QC check compares embedding distance across\n  chunk boundaries; drift above threshold triggers a re-render of the join.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Voice Design from Text Description",
+    "what_it_does": "A new voice is created from a text description plus structured attributes: gender (male/female/neutral), age (young/middle/old), accent (american, british, australian, indian, ...), accent strength (0.3–2.0). The system generates up to 3 previews from 20–1000 characters of preview text; the user saves the chosen one to their library.",
+    "why_it_works": "It separates \"what the voice sounds like\" from any real person — no consent problem, no biometric data. Descriptions map to latent attributes the encoder already understands.",
+    "genesis_implementation": "Voice module supports description-designed voices as the DEFAULT for non-personal voices (alerts, narration), keeping cloning for the father's voice only. Seed support for reproducible generation; the design record (description + attributes + seed) is stored so the voice can be exactly recreated.",
+    "raw": "- **What it does:** A new voice is created from a text description plus\n  structured attributes: gender (male/female/neutral), age (young/middle/old),\n  accent (american, british, australian, indian, ...), accent strength\n  (0.3–2.0). The system generates up to 3 previews from 20–1000 characters\n  of preview text; the user saves the chosen one to their library.\n- **Why it works:** It separates \"what the voice sounds like\" from any real\n  person — no consent problem, no biometric data. Descriptions map to latent\n  attributes the encoder already understands.\n- **GENESIS implementation:** Voice module supports description-designed\n  voices as the DEFAULT for non-personal voices (alerts, narration), keeping\n  cloning for the father's voice only. Seed support for reproducible\n  generation; the design record (description + attributes + seed) is stored so\n  the voice can be exactly recreated.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Multilingual Identity-Preserving Dubbing",
+    "what_it_does": "A cloned or designed voice keeps its timbre while speaking 90+ languages (v4; 70+ in v3) — a Spanish speaker's clone reading German sounds like that person with native German pronunciation, not an English speaker forcing it. One recording can be deployed across a whole catalogue.",
+    "why_it_works": "The embedding encodes speaker identity independent of phoneme inventory; the model maps target-language phonetics onto the same acoustic signature.",
+    "genesis_implementation": "For GENESIS's assistant, the father's voice (cloned with consent) can address him in whatever language context is active — English conversation, Persian terms read naturally — without re-enrolling per language. Practitioner gotcha to encode: language-matched voices must be enforced — English-trained voices forced into non-English cause pronunciation issues, so the language hint must always be explicit.",
+    "raw": "- **What it does:** A cloned or designed voice keeps its timbre while speaking\n  90+ languages (v4; 70+ in v3) — a Spanish speaker's clone reading German\n  sounds like that person with native German pronunciation, not an English\n  speaker forcing it. One recording can be deployed across a whole catalogue.\n- **Why it works:** The embedding encodes speaker identity independent of\n  phoneme inventory; the model maps target-language phonetics onto the same\n  acoustic signature.\n- **GENESIS implementation:** For GENESIS's assistant, the father's voice\n  (cloned with consent) can address him in whatever language context is\n  active — English conversation, Persian terms read naturally — without\n  re-enrolling per language. Practitioner gotcha to encode: language-matched\n  voices must be enforced — English-trained voices forced into non-English\n  cause pronunciation issues, so the language hint must always be explicit.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-09",
+    "title": "Consent + Identity Gates Before Any Cloning",
+    "what_it_does": "Cloning requires consent verification — the uploader confirms rights/permissions. Professional Voice Cloning adds a stricter identity gate: only the speaker themselves can create and verify their own professional clone, even with third-party permission; only after they verify can they share access. Clones of some political figures are blocked outright.",
+    "why_it_works": "It makes voice a first-class identity asset, not data. The gate is at creation time, before any model training — the cheapest point to stop abuse.",
+    "genesis_implementation": "Voice module cloning entry requires a recorded spoken-consent phrase from the speaker, stored with the voice record. PVC-grade fine-tuning is available ONLY for the father's own voice, gated by his explicit per-case approval. This gate must be code-enforced (permission_gate pattern, hands), never UI-only.",
+    "raw": "- **What it does:** Cloning requires consent verification — the uploader\n  confirms rights/permissions. Professional Voice Cloning adds a stricter\n  identity gate: only the speaker themselves can create and verify their own\n  professional clone, even with third-party permission; only after they verify\n  can they share access. Clones of some political figures are blocked outright.\n- **Why it works:** It makes voice a first-class identity asset, not data.\n  The gate is at creation time, before any model training — the cheapest\n  point to stop abuse.\n- **GENESIS implementation:** Voice module cloning entry requires a recorded\n  spoken-consent phrase from the speaker, stored with the voice record.\n  PVC-grade fine-tuning is available ONLY for the father's own voice, gated by\n  his explicit per-case approval. This gate must be code-enforced\n  (permission_gate pattern, hands), never UI-only.",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-10",
+    "title": "Provenance Watermarking (detectable synthetic audio)",
+    "what_it_does": "Every generation is digitally watermarked, with a public classifier that can flag audio made with the tool; back-tracking systems can identify the source and purpose of a voice clone. Claimed detection precision: 99% (vendor-reported).",
+    "why_it_works": "Watermarks don't stop misuse — they stop DENIABILITY. Detection creates accountability for synthetic audio downstream.",
+    "genesis_implementation": "Every audio file the voice module renders is watermarked + recorded in a provenance log (voice_id, model, timestamp, text hash, intended use). GENESIS's own classifier can verify \"was this made by us?\" — and critically, the 369 publish gate can detect AI voice and fail closed on it. Log retention policy: provenance records are permanent; raw text is not.",
+    "raw": "- **What it does:** Every generation is digitally watermarked, with a public\n  classifier that can flag audio made with the tool; back-tracking systems can\n  identify the source and purpose of a voice clone. Claimed detection\n  precision: 99% (vendor-reported).\n- **Why it works:** Watermarks don't stop misuse — they stop DENIABILITY.\n  Detection creates accountability for synthetic audio downstream.\n- **GENESIS implementation:** Every audio file the voice module renders is\n  watermarked + recorded in a provenance log (voice_id, model, timestamp,\n  text hash, intended use). GENESIS's own classifier can verify \"was this\n  made by us?\" — and critically, the 369 publish gate can detect AI voice and\n  fail closed on it. Log retention policy: provenance records are permanent;\n  raw text is not.",
+    "modules": [
+     "report",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Chunked Long-Form Generation with Stitch Reliability",
+    "what_it_does": "The TTS module caps single requests (~5,000 characters; v4 up to 10,000); long scripts are split at sentence/paragraph boundaries, queued sequentially, and stitched. Errors are fixed by re-rendering the failed paragraph only and splicing — a re-render does NOT repeat the whole chunk.",
+    "why_it_works": "Failures are local; recovery is local. Mid-word splits introduce audible artefacts, so boundaries are sacred.",
+    "genesis_implementation": "Voice module long-form pipeline: split → render chunk → QC each chunk → stitch → final QC. A per-chunk manifest (text hash → audio file → settings) lets re-renders target exactly the failing paragraph. Never re-render the whole script for one mispronounced word.",
+    "raw": "- **What it does:** The TTS module caps single requests (~5,000 characters;\n  v4 up to 10,000); long scripts are split at sentence/paragraph boundaries,\n  queued sequentially, and stitched. Errors are fixed by re-rendering the\n  failed paragraph only and splicing — a re-render does NOT repeat the whole\n  chunk.\n- **Why it works:** Failures are local; recovery is local. Mid-word splits\n  introduce audible artefacts, so boundaries are sacred.\n- **GENESIS implementation:** Voice module long-form pipeline: split →\n  render chunk → QC each chunk → stitch → final QC. A per-chunk manifest\n  (text hash → audio file → settings) lets re-renders target exactly the\n  failing paragraph. Never re-render the whole script for one mispronounced\n  word.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-12",
+    "title": "Pronunciation Dictionaries + SSML Pause Control",
+    "what_it_does": "A custom pronunciation dictionary maps problem words (names, acronyms, serial numbers, brand terms) to phonetic spellings; SSML `<break time=\"1.5s\"/>` gives precise pause control between sentences. Independent reviews confirm weak spots without these: mispronounced serial numbers, alphanumeric strings, acronyms, and names.",
+    "why_it_works": "The model guesses pronunciation from orthography; the dictionary overrides the guess with certainty. Explicit pause tags beat punctuation for timing.",
+    "genesis_implementation": "Voice module keeps a persistent pronunciation dictionary (seeded with the father's name, project names, \"369\", \"GENESIS\") applied automatically to every render. Long scripts are pre-scanned for acronyms/numbers and dictionary-checked before generation — fixing pronunciation BEFORE rendering saves credits and re-renders.",
+    "raw": "- **What it does:** A custom pronunciation dictionary maps problem words\n  (names, acronyms, serial numbers, brand terms) to phonetic spellings; SSML\n  `<break time=\"1.5s\"/>` gives precise pause control between sentences.\n  Independent reviews confirm weak spots without these: mispronounced serial\n  numbers, alphanumeric strings, acronyms, and names.\n- **Why it works:** The model guesses pronunciation from orthography; the\n  dictionary overrides the guess with certainty. Explicit pause tags beat\n  punctuation for timing.\n- **GENESIS implementation:** Voice module keeps a persistent\n  pronunciation dictionary (seeded with the father's name, project names,\n  \"369\", \"GENESIS\") applied automatically to every render. Long scripts are\n  pre-scanned for acronyms/numbers and dictionary-checked before generation —\n  fixing pronunciation BEFORE rendering saves credits and re-renders.",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Model/Latency Tiering by Use Case (not by price)",
+    "what_it_does": "The lineup is tiered by job shape: Flash (ultra-low latency, ~75 ms, 0.5 credit/char) for interactive agents; Turbo for fast quality; Multilingual v2 for long-form consistency (1 credit/char); v4 for maximum expressiveness. Practitioner rule: reserve premium models only where the quality difference is perceptible.",
+    "why_it_works": "Per-character billing means model choice IS cost choice. Tiering converts \"always best quality\" into an explicit budget decision.",
+    "genesis_implementation": "Scheduler maps each voice job to a tier: conversational reply → flash tier; notification → turbo; long narration → quality tier. Zero-spend discipline: local/offline rendering is the default for routine assistant speech; cloud premium models are never the default path. --- ## Capability signals (vendor claims vs independent evidence) | Capability | Vendor claim | Independent evidence | Verdict for GENESIS | |---|---|---|---| | 90+ languages, identity preserved | Official v4 launch | Artificial Analysis Speech Arena #1 at launch; blind tests reported by press | Plausible; treat as direction, not guarantee | | 10-second instant cloning | Official v4 launch | Press coverage confirms feature exists; reviewers note quality needs 30–60s+ for stable results in practice | Use 10s as floor, 1–2 min as working spec | | Sub-150 ms time-to-speech (v4 Turbo) | Official launch | Community skill docs cite ~75 ms model latency for Flash v2.5 | Latency class is real; exact ms unverified | | Long-form voice consistency | Official v4 launch | venice.ai assessment notes identity preservation improved vs prior drift | Adopt the chunked-continuity pattern (T-06) regardless | | Watermark detection 99% precision | Executive statement | No independent reproduction found | Treat as \"exists\", not \"99%\" — our QC does not depend on it | | \"75% preferred v4 blind\" | Company testing | Third-party evaluator ranked it first, but not at 75% margin | Discount to \"competitive top-tier\" | ## Quality factors to design around (independently reported) - Emotional flattening beyond ~200–250 words in one pass — chunk long scripts (T-11). - Voice drift across chapters in long narration — stitch with context hints (T-06). - Mispronounced serial numbers, alphanumeric strings, acronyms, proper names — pronunciation dictionary (T-12). - Inconsistent adherence to inline performance tags — treat tags as hints with fallback neutral rendering, never as guaranteed. - More material is not always better for instant clones — >3 min samples can reduce stability (T-02). - Sample consistency beats sample quantity — one microphone, one room, one energy level. ## Sources - ElevenLabs v4 launch coverage — martincid.com (Oct 2026), techtimes.com (Sep 2026) - Architecture explainer — techtimes.com valuation piece (Jul 2026) - Cloning workflow guides — aiproductweekly.substack.com, goldmidi.com community - API/streaming patterns — cmarix.com integration guide, jeremylongshore/claude-code-plugins-plus-skills (GitHub), hjleepapa/convonet-anthropic (GitHub) - Voice design/dictionary — supraforge/aaas-vault (GitHub), griptape-nodes-library-elevenlabs (GitHub), fahimai.com - Independent reviews — memeburn.com, unite.ai, saas.pet, theovarn (Medium), venice.ai model datasheet - Safety/governance — moneycontrol.com (Rising Bharat Summit), martincid.com, techtimes.com (Amer v. Eleven Labs, BIPA suit pending May 2026) - Pricing — casrai.org, cloudzero.com, dev.to/stimlau, flexprice.io (all Aug–Oct 2026) All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases. ## Compliance notes for GENESIS - All techniques are structural knowledge (pipelines, workflows, settings taxonomies), not proprietary code. Safe to implement from scratch. - The Amer v. Eleven Labs class action (N.D. Illinois, BIPA, filed May 2026, pending) reinforces why our consent gate (T-09) must be identity-level and logged — voice is biometric data; treat enrollment records accordingly. - NO AI VOICE LAW restated: none of this knowledge may be used to produce voice tracks for 369 published content. The publish gate fail-closed rule is a LAW, not a recommendation.",
+    "raw": "- **What it does:** The lineup is tiered by job shape: Flash (ultra-low\n  latency, ~75 ms, 0.5 credit/char) for interactive agents; Turbo for fast\n  quality; Multilingual v2 for long-form consistency (1 credit/char);\n  v4 for maximum expressiveness. Practitioner rule: reserve premium models\n  only where the quality difference is perceptible.\n- **Why it works:** Per-character billing means model choice IS cost choice.\n  Tiering converts \"always best quality\" into an explicit budget decision.\n- **GENESIS implementation:** Scheduler maps each voice job to a tier:\n  conversational reply → flash tier; notification → turbo; long narration →\n  quality tier. Zero-spend discipline: local/offline rendering is the default\n  for routine assistant speech; cloud premium models are never the default\n  path.\n\n---\n\n## Capability signals (vendor claims vs independent evidence)\n\n| Capability | Vendor claim | Independent evidence | Verdict for GENESIS |\n|---|---|---|---|\n| 90+ languages, identity preserved | Official v4 launch | Artificial Analysis Speech Arena #1 at launch; blind tests reported by press | Plausible; treat as direction, not guarantee |\n| 10-second instant cloning | Official v4 launch | Press coverage confirms feature exists; reviewers note quality needs 30–60s+ for stable results in practice | Use 10s as floor, 1–2 min as working spec |\n| Sub-150 ms time-to-speech (v4 Turbo) | Official launch | Community skill docs cite ~75 ms model latency for Flash v2.5 | Latency class is real; exact ms unverified |\n| Long-form voice consistency | Official v4 launch | venice.ai assessment notes identity preservation improved vs prior drift | Adopt the chunked-continuity pattern (T-06) regardless |\n| Watermark detection 99% precision | Executive statement | No independent reproduction found | Treat as \"exists\", not \"99%\" — our QC does not depend on it |\n| \"75% preferred v4 blind\" | Company testing | Third-party evaluator ranked it first, but not at 75% margin | Discount to \"competitive top-tier\" |\n\n## Quality factors to design around (independently reported)\n\n- Emotional flattening beyond ~200–250 words in one pass — chunk long scripts (T-11).\n- Voice drift across chapters in long narration — stitch with context hints (T-06).\n- Mispronounced serial numbers, alphanumeric strings, acronyms, proper names — pronunciation dictionary (T-12).\n- Inconsistent adherence to inline performance tags — treat tags as hints with fallback neutral rendering, never as guaranteed.\n- More material is not always better for instant clones — >3 min samples can reduce stability (T-02).\n- Sample consistency beats sample quantity — one microphone, one room, one energy level.\n\n## Sources\n\n- ElevenLabs v4 launch coverage — martincid.com (Oct 2026), techtimes.com (Sep 2026)\n- Architecture explainer — techtimes.com valuation piece (Jul 2026)\n- Cloning workflow guides — aiproductweekly.substack.com, goldmidi.com community\n- API/streaming patterns — cmarix.com integration guide, jeremylongshore/claude-code-plugins-plus-skills (GitHub), hjleepapa/convonet-anthropic (GitHub)\n- Voice design/dictionary — supraforge/aaas-vault (GitHub), griptape-nodes-library-elevenlabs (GitHub), fahimai.com\n- Independent reviews — memeburn.com, unite.ai, saas.pet, theovarn (Medium), venice.ai model datasheet\n- Safety/governance — moneycontrol.com (Rising Bharat Summit), martincid.com, techtimes.com (Amer v. Eleven Labs, BIPA suit pending May 2026)\n- Pricing — casrai.org, cloudzero.com, dev.to/stimlau, flexprice.io (all Aug–Oct 2026)\n\nAll facts above are summaries in our own words of publicly reported\ninformation. No copyrighted text reproduced beyond brief attributed phrases.\n\n## Compliance notes for GENESIS\n\n- All techniques are structural knowledge (pipelines, workflows, settings\n  taxonomies), not proprietary code. Safe to implement from scratch.\n- The Amer v. Eleven Labs class action (N.D. Illinois, BIPA, filed May 2026,\n  pending) reinforces why our consent gate (T-09) must be identity-level and\n  logged — voice is biometric data; treat enrollment records accordingly.\n- NO AI VOICE LAW restated: none of this knowledge may be used to produce\n  voice tracks for 369 published content. The publish gate fail-closed rule is\n  a LAW, not a recommendation.",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Write-For-Ears, Not For-Eyes",
+    "use_when": "preparing any script GENESIS will speak.",
+    "pattern": "A script that reads well silently usually speaks badly. Write short sentences, one idea per sentence, explicit punctuation for pauses. Numbers, acronyms, and symbols must be spelled as they should be spoken.",
+    "template": " > Before any text reaches the renderer, normalize it: > \"369\" → \"three six nine\"; \"YPP\" → \"Y P P\"; \"10:30\" → \"ten thirty\"; > remove URLs, expand abbreviations via the pronunciation dictionary (T-12). > A script is render-ready only when a human could read it aloud cold.",
+    "raw": "- **Use when:** preparing any script GENESIS will speak.\n- **Pattern:** A script that reads well silently usually speaks badly. Write\n  short sentences, one idea per sentence, explicit punctuation for pauses.\n  Numbers, acronyms, and symbols must be spelled as they should be spoken.\n- **Template:**\n  > Before any text reaches the renderer, normalize it:\n  > \"369\" → \"three six nine\"; \"YPP\" → \"Y P P\"; \"10:30\" → \"ten thirty\";\n  > remove URLs, expand abbreviations via the pronunciation dictionary (T-12).\n  > A script is render-ready only when a human could read it aloud cold.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Inline Direction Tags",
+    "use_when": "the delivery needs emotion, pacing, or non-speech sounds.",
+    "pattern": "Put the direction in the script itself with square-bracket tags, read in context: `[warm tone]`, `[calm]`, `[whispers]`, `[laughs]`, `[sighs]`, `[sarcastically]`. Stack and sequence tags for scenes; add ambient cues like `[light rain]` where supported.",
+    "template": " > `[warm tone] Good morning, YZ. [calm] Three items are ready for your > decision today.` > Tags are hints, not guarantees — the renderer falls back to neutral > delivery for unknown tags and logs the miss (never invents prosody).",
+    "raw": "- **Use when:** the delivery needs emotion, pacing, or non-speech sounds.\n- **Pattern:** Put the direction in the script itself with square-bracket\n  tags, read in context: `[warm tone]`, `[calm]`, `[whispers]`, `[laughs]`,\n  `[sighs]`, `[sarcastically]`. Stack and sequence tags for scenes; add\n  ambient cues like `[light rain]` where supported.\n- **Template:**\n  > `[warm tone] Good morning, YZ. [calm] Three items are ready for your\n  > decision today.`\n  > Tags are hints, not guarantees — the renderer falls back to neutral\n  > delivery for unknown tags and logs the miss (never invents prosody).",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Boundary-Respecting Chunking",
+    "use_when": "the script exceeds one render request.",
+    "pattern": "Split only at sentence or paragraph boundaries. Never split mid-word or mid-sentence. Each chunk carries its neighbors as context hints (previous_text / next_text) so stitching stays continuous.",
+    "template": " > Split at blank lines first, sentences second. > Attach the last sentence of the previous chunk and the first sentence of > the next as context. Chunk manifest: text hash → audio file → settings. > A re-render fixes one paragraph and splices — never the whole script.",
+    "raw": "- **Use when:** the script exceeds one render request.\n- **Pattern:** Split only at sentence or paragraph boundaries. Never split\n  mid-word or mid-sentence. Each chunk carries its neighbors as context hints\n  (previous_text / next_text) so stitching stays continuous.\n- **Template:**\n  > Split at blank lines first, sentences second.\n  > Attach the last sentence of the previous chunk and the first sentence of\n  > the next as context. Chunk manifest: text hash → audio file → settings.\n  > A re-render fixes one paragraph and splices — never the whole script.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Preset-per-Intent Voice Settings",
+    "use_when": "choosing stability/similarity/style/speed for a job.",
+    "pattern": "Do not hand-tune per sentence. Pick one named preset by intent, applied uniformly: narration, conversational, announcement, whisper.",
+    "template": " > - Narration (long-form reading): stability 0.5, similarity 0.75, style 0.0 > - Conversational (replies to father): stability 0.4, similarity 0.6, style 0.3 > - Cloned voice work: stability 0.5, similarity 0.85, style 0.0 > Speed 0.7–1.2 only; extremes degrade quality. Settings travel with the > render manifest so any QC failure is traceable.",
+    "raw": "- **Use when:** choosing stability/similarity/style/speed for a job.\n- **Pattern:** Do not hand-tune per sentence. Pick one named preset by\n  intent, applied uniformly: narration, conversational, announcement, whisper.\n- **Template:**\n  > - Narration (long-form reading): stability 0.5, similarity 0.75, style 0.0\n  > - Conversational (replies to father): stability 0.4, similarity 0.6, style 0.3\n  > - Cloned voice work: stability 0.5, similarity 0.85, style 0.0\n  > Speed 0.7–1.2 only; extremes degrade quality. Settings travel with the\n  > render manifest so any QC failure is traceable.",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Pronunciation Pre-Flight",
+    "use_when": "any script contains names, acronyms, numbers, or brand terms.",
+    "pattern": "Pre-scan the script for tokens the model is known to guess wrong; resolve each through the dictionary before rendering, not after listening to a bad take.",
+    "template": " > Maintain a persistent dictionary: `word → spoken form`. > Seed it with: YZ, GENESIS, 369, YPP, brand/product terms. > Every new acronym that survives a render gets one dictionary entry — > never fix the same mispronunciation twice.",
+    "raw": "- **Use when:** any script contains names, acronyms, numbers, or brand terms.\n- **Pattern:** Pre-scan the script for tokens the model is known to guess\n  wrong; resolve each through the dictionary before rendering, not after\n  listening to a bad take.\n- **Template:**\n  > Maintain a persistent dictionary: `word → spoken form`.\n  > Seed it with: YZ, GENESIS, 369, YPP, brand/product terms.\n  > Every new acronym that survives a render gets one dictionary entry —\n  > never fix the same mispronunciation twice.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Voice Selection by Consistency Spec",
+    "use_when": "choosing which voice speaks a given job.",
+    "pattern": "Voice choice is a spec, not a taste test: the sample used to create it must be consistent (one mic, one room, one energy), and the voice must match the job's language — language-matched voices are mandatory, English-trained voices must never read non-English.",
+    "template": " > Voice record carries: source consistency (mic/room/energy), tier > (instant/professional/designed), language, consent record. > For the father: his consented clone speaks to him. For everything else: > a description-designed voice (T-07) — no real person's voice, no consent > problem.",
+    "raw": "- **Use when:** choosing which voice speaks a given job.\n- **Pattern:** Voice choice is a spec, not a taste test: the sample used to\n  create it must be consistent (one mic, one room, one energy), and the voice\n  must match the job's language — language-matched voices are mandatory,\n  English-trained voices must never read non-English.\n- **Template:**\n  > Voice record carries: source consistency (mic/room/energy), tier\n  > (instant/professional/designed), language, consent record.\n  > For the father: his consented clone speaks to him. For everything else:\n  > a description-designed voice (T-07) — no real person's voice, no consent\n  > problem.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Three-Take Selection",
+    "use_when": "a render matters (announcements, long narration openings).",
+    "pattern": "Generate the take, then regenerate twice more (seed-varied), and keep the best of three. Bad generations still cost — so this is reserved for high-stakes renders, not routine replies.",
+    "template": " > For high-stakes jobs: render 3 variants with different seeds, score them > (clarity, tag adherence, no artefacts), keep the winner, log all three. > For routine conversational replies: single take, conversational preset.",
+    "raw": "- **Use when:** a render matters (announcements, long narration openings).\n- **Pattern:** Generate the take, then regenerate twice more (seed-varied),\n  and keep the best of three. Bad generations still cost — so this is\n  reserved for high-stakes renders, not routine replies.\n- **Template:**\n  > For high-stakes jobs: render 3 variants with different seeds, score them\n  > (clarity, tag adherence, no artefacts), keep the winner, log all three.\n  > For routine conversational replies: single take, conversational preset.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-08",
+    "title": "Watermark-and-Log Every Render",
+    "use_when": "any audio is generated, ever.",
+    "pattern": "Every render is watermarked and provenance-logged — voice_id, model tier, timestamp, text hash, settings, intended use. No anonymous audio leaves the voice module.",
+    "template": " > Provenance record = {voice_id, model_tier, text_hash, settings, ts, use}. > The 369 publish gate reads this log: any voice track with synthetic > provenance is rejected from published content — fail-closed, no override. --- ## Composition rule A full voice job is P-01 (write for ears) + P-05 (pronunciation pre-flight) + P-03 (chunking) + P-04 (preset) + P-02 (direction tags) + P-08 (watermark/log). Add P-06 when the voice isn't the father's, P-07 when the render is high-stakes. ## Sources Distilled from public ElevenLabs user guides (fahimai.com), cloning tutorials (aiproductweekly, goldmidi community), API skill docs (jeremylongshore/claude-code-plugins-plus-skills, griptape-nodes, convonet), and independent reviews (memeburn, unite.ai, saas.pet). All wording is our own.",
+    "raw": "- **Use when:** any audio is generated, ever.\n- **Pattern:** Every render is watermarked and provenance-logged —\n  voice_id, model tier, timestamp, text hash, settings, intended use. No\n  anonymous audio leaves the voice module.\n- **Template:**\n  > Provenance record = {voice_id, model_tier, text_hash, settings, ts, use}.\n  > The 369 publish gate reads this log: any voice track with synthetic\n  > provenance is rejected from published content — fail-closed, no override.\n\n---\n\n## Composition rule\n\nA full voice job is P-01 (write for ears) + P-05 (pronunciation pre-flight) +\nP-03 (chunking) + P-04 (preset) + P-02 (direction tags) + P-08\n(watermark/log). Add P-06 when the voice isn't the father's, P-07 when the\nrender is high-stakes.\n\n## Sources\n\nDistilled from public ElevenLabs user guides (fahimai.com), cloning tutorials\n(aiproductweekly, goldmidi community), API skill docs\n(jeremylongshore/claude-code-plugins-plus-skills, griptape-nodes, convonet),\nand independent reviews (memeburn, unite.ai, saas.pet). All wording is our\nown.",
+    "modules": [
+     "report",
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Voice Enrollment (cloning the father's voice)",
+    "body": "The identity-gated onboarding for the one voice GENESIS will speak with.\n\n1. **CONSENT** — The father records a spoken consent phrase (his voice,\n   his words, naming the purpose). Stored with timestamp; required before\n   anything else. Entry: explicit request to enroll a voice. Exit: consent\n   recording exists, or the workflow stops (fail-closed).\n2. **SAMPLE** — Record enrollment audio: 1–2 minutes of natural speech,\n   one microphone, one room, consistent energy — varied pace, questions and\n   statements. More material is NOT better; consistency beats quantity.\n   Entry: consent on file. Exit: single-speaker, clean sample (no overlap,\n   no background noise), or re-record.\n3. **ENROLL** — Encoder extracts the speaker embedding; the voice record is\n   created with tier=instant, consent reference, and source-consistency\n   metadata. Exit: voice_id usable in any TTS call immediately.\n4. **VERIFY** — Generate 3 test phrases (greeting, name of father, one\n   acronym like \"YPP\"); the father listens and approves. Exit: father\n   approval, or return to SAMPLE with notes.\n5. **PROMOTE (optional, deep tier)** — If instant fidelity is insufficient\n   for daily use: 30+ minutes of clean audio, fine-tuning run (hours),\n   father's explicit per-case approval. Exit: tier=professional,\n   QC'd on a long passage before activation.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Cloning someone else's voice | Consent recording is the speaker's own voice; mismatch = abort |\n| Bad sample → bad clone forever | VERIFY stage listens before any real use |\n| Voice used beyond consent scope | Consent names the purpose; new purpose = new consent |",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "TTS Production Pipeline (script → finished audio)",
+    "body": "The pipeline for any non-conversational speech (briefings, narration,\nannouncements).\n\n1. **INTAKE** — Text + intent (narration / announcement) + target voice.\n   Exit: script + intent + voice_id, all present.\n2. **NORMALIZE (P-01)** — Expand acronyms/numbers, strip URLs, spell out\n   everything to be spoken. Exit: script reads aloud cleanly by a human.\n3. **PRE-FLIGHT (P-05)** — Scan for acronyms, names, numbers, brand terms;\n   resolve through the pronunciation dictionary. Exit: zero un-resolved\n   tokens.\n4. **CHUNK (P-03)** — Split at paragraph/sentence boundaries; attach\n   context hints (previous_text / next_text); write chunk manifest.\n   Exit: chunks + manifest.\n5. **RENDER** — Generate each chunk with the intent preset (P-04),\n   direction tags (P-02), tier chosen by job (T-13). High-stakes jobs:\n   three-take selection (P-07). Exit: all chunks rendered with manifests.\n6. **STITCH + QC** — Concatenate with cross-fades at joins; QC checks:\n   embedding distance across joins (drift), tag adherence, no artefacts,\n   pauses natural. Re-render only failing paragraphs and splice.\n   Exit: single audio file passing all QC checks.\n7. **SEAL (P-08)** — Watermark + provenance log. Exit: provenance record\n   complete; audio is marked synthetic and is rejected by the 369 publish\n   gate.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Mispronounced acronym/serial | Pre-flight dictionary, not post-listen |\n| Voice drift across chunks | Context hints + embedding-distance QC |\n| Flat delivery over long scripts | Chunking ≤ ~200 words per pass + direction tags |\n| Unlabeled synthetic audio leaking | Watermark-and-log is a mandatory stage, not optional |",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Real-Time Conversational Loop (father talks, GENESIS answers)",
+    "body": "The low-latency voice loop for daily interaction.\n\n1. **LISTEN** — Wakeword (wakeword module) → capture utterance; VAD\n   endpoint detection; STT commit on silence. Exit: committed transcript.\n2. **THINK** — LLM generates the reply; text streams chunk-by-chunk.\n   Exit: text stream started.\n3. **SPEAK** — Persistent TTS WebSocket; send space (BOS), stream text\n   chunks as they arrive, flush audio at each sentence boundary\n   (T-05). Flash-tier model for minimal latency. Exit: first audio\n   chunk within the latency budget (~150–300 ms target).\n4. **BARGE-IN** — If the father starts speaking, interrupt the current\n   stream, close the context, and return to LISTEN. Exit: no overlapping\n   speech beyond ~300 ms.\n5. **LOG** — Transcript + audio provenance stored (P-08). Exit: session\n   record complete.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Perceived latency kills the conversation | Streaming, not batch: audio plays before the full reply exists |\n| GENESIS talks over the father | Barge-in with hard interrupt; speech never queues behind itself |\n| Cloud voice dependency at runtime | Fallback: if the streaming service is unreachable, degrade to a\n  local voice or text — never go silent |",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Voice QC Loop (merciless review for audio)",
+    "body": "The audio analog of our LAW-050 merciless review, applied to every\nhigh-stakes render.\n\n1. **GENERATE** — Render per W-02 with settings manifest.\n2. **LISTEN-BACK** — Independent check (not the scheduler that wrote the\n   script): pronunciation of every dictionary token, tag adherence, pause\n   naturalness, no robotic phrasing, no artefacts.\n3. **SCORE** — Pass / fix-list. Fix-list names the exact chunk and the\n   exact fault (e.g. \"chunk 4, 'YPP' misread — dictionary entry missing\").\n4. **FIX** — Re-render only the failing chunk (paragraph-level splice),\n   or add the missing dictionary entry and re-render. Never the whole\n   script for one word.\n5. **SEAL** — Watermark + provenance (P-08); verdict stored with the\n   audio.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| The script-writer QC's its own audio | Independent listener; separation of roles |\n| Same fault fixed twice | Every fix writes a dictionary or settings rule — never fix the same\n  mispronunciation twice |\n| AI voice leaking into published content | Seal stage marks synthetic provenance; 369 publish gate rejects it\n  fail-closed |\n\n---\n\n## Failure modes each workflow guards against (summary)\n\n| Workflow | Primary failure mode | Guard |\n|---|---|---|\n| W-01 | Cloned voice without real consent | Spoken-consent gate, fail-closed |\n| W-02 | Bad pronunciation, drift, unlabeled audio | Pre-flight + context stitching + mandatory seal |\n| W-03 | Latency and barge-in failures | Streaming-first, hard interrupt, offline fallback |\n| W-04 | Self-graded audio, repeated faults | Independent listener + rule-per-fix + synthetic seal |\n\n## Sources\n\nWorkflows reverse-engineered from public ElevenLabs cloning guides\n(aiproductweekly, goldmidi community), API/streaming integration docs\n(cmarix, jeremylongshore skill, convonet, griptape), independent reviews\n(memeburn, unite.ai, theovarn), and the v4 launch coverage (martincid,\ntechtimes). All designs are our own.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": [
+   "NO AI VOICE LAW (2026-10-09): AI voice is banned in 369 published content. Voice-synthesis techniques in this pack are product capability knowledge for the GENESIS local system only -- the 369 publish path must refuse AI-voice steps at the gate. Capability mapped, violation never."
+  ]
+ },
+ "fishaudio": {
+  "techniques": [
+   {
+    "id": "T-01",
+    "title": "Dual-Autoregressive Architecture (Slow semantic + Fast acoustic)",
+    "what_it_does": "The synthesis model is split into two autoregressive transformers. A \"Slow AR\" stage generates high-level semantic tokens — what is being said and in what emotional register. A \"Fast AR\" stage then generates fine-grained acoustic tokens — the waveform-level detail that makes the voice sound like a specific person. The split is optimized so both stages run within the streaming budget.",
+    "why_it_works": "Semantic intent and acoustic identity are different problems with different time constants. Decoupling them lets the system reason about expression at the Slow stage and about fidelity at the Fast stage, and lets each be tuned independently (expressiveness vs. latency) instead of compromising both in one monolithic pass.",
+    "genesis_implementation": "Design the voice module's render path as two sequential stages: a semantic planner (text + direction tags → prosody/semantic token plan) followed by an acoustic renderer (plan + speaker reference → waveform). Keep a clean boundary between the two so prosody can be re-planned without re-rendering acoustics, and vice versa.",
+    "raw": "- **What it does:** The synthesis model is split into two autoregressive\n  transformers. A \"Slow AR\" stage generates high-level semantic tokens — what\n  is being said and in what emotional register. A \"Fast AR\" stage then\n  generates fine-grained acoustic tokens — the waveform-level detail that\n  makes the voice sound like a specific person. The split is optimized so\n  both stages run within the streaming budget.\n- **Why it works:** Semantic intent and acoustic identity are different\n  problems with different time constants. Decoupling them lets the system\n  reason about expression at the Slow stage and about fidelity at the Fast\n  stage, and lets each be tuned independently (expressiveness vs. latency)\n  instead of compromising both in one monolithic pass.\n- **GENESIS implementation:** Design the voice module's render path as two\n  sequential stages: a semantic planner (text + direction tags →\n  prosody/semantic token plan) followed by an acoustic renderer (plan +\n  speaker reference → waveform). Keep a clean boundary between the two so\n  prosody can be re-planned without re-rendering acoustics, and vice versa.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-02",
+    "title": "Discrete FSQ Audio Codec Pipeline (tokens all the way down)",
+    "what_it_does": "Reference audio is encoded by a VQ-GAN-style encoder into discrete acoustic tokens (reported: Finite Scalar Quantization codec at 21 Hz with 8 codebooks of 1024 entries each), and synthesis decodes tokens back to waveform. The whole pipeline — reference, generation, output — lives in a shared token space.",
+    "why_it_works": "Discrete tokens turn audio into a language the transformer already speaks. They compress cleanly, condition efficiently (reference = tokens, not raw waveform), and make operations like editing, splicing, and streaming chunk-based instead of sample-based.",
+    "genesis_implementation": "Standardize the voice module on a discrete codec for all audio I/O: enrollment clips stored as tokens, not WAVs; streaming done per token-chunk; edits applied at token boundaries. This makes re-rendering, caching, and single-word patches (T-07) cheap.",
+    "raw": "- **What it does:** Reference audio is encoded by a VQ-GAN-style encoder into\n  discrete acoustic tokens (reported: Finite Scalar Quantization codec at\n  21 Hz with 8 codebooks of 1024 entries each), and synthesis decodes tokens\n  back to waveform. The whole pipeline — reference, generation, output —\n  lives in a shared token space.\n- **Why it works:** Discrete tokens turn audio into a language the\n  transformer already speaks. They compress cleanly, condition efficiently\n  (reference = tokens, not raw waveform), and make operations like editing,\n  splicing, and streaming chunk-based instead of sample-based.\n- **GENESIS implementation:** Standardize the voice module on a discrete\n  codec for all audio I/O: enrollment clips stored as tokens, not WAVs;\n  streaming done per token-chunk; edits applied at token boundaries. This\n  makes re-rendering, caching, and single-word patches (T-07) cheap.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-03",
+    "title": "Zero-Shot Reference Conditioning (5–10 seconds, no training)",
+    "what_it_does": "Cloning needs only a short reference clip (~5–10 seconds) plus its transcript. No fine-tuning run, no per-voice training — the model extracts the acoustic signature at inference time from the reference tokens and conditions all subsequent generation on it. Reported training scale: 10M+ hours of audio across 83 languages.",
+    "why_it_works": "A strong speaker encoder trained at massive scale learns the invariant features of voice identity (tone, pitch distribution, formant structure, rhythmic pattern). With that prior, a short clip is enough to pin down \"who\" — the model fills in the rest from its training.",
+    "genesis_implementation": "Voice module enrollment = record short clip + transcript, extract embedding/tokens, register a voice_id immediately. No training queue for the instant tier. Mark the voice `tier: instant`, and only escalate to a trained deep tier (with the father's per-case approval) if the instant clone cannot hold accent/timbre for the intended use.",
+    "raw": "- **What it does:** Cloning needs only a short reference clip (~5–10\n  seconds) plus its transcript. No fine-tuning run, no per-voice training —\n  the model extracts the acoustic signature at inference time from the\n  reference tokens and conditions all subsequent generation on it. Reported\n  training scale: 10M+ hours of audio across 83 languages.\n- **Why it works:** A strong speaker encoder trained at massive scale learns\n  the invariant features of voice identity (tone, pitch distribution,\n  formant structure, rhythmic pattern). With that prior, a short clip is\n  enough to pin down \"who\" — the model fills in the rest from its training.\n- **GENESIS implementation:** Voice module enrollment = record short clip +\n  transcript, extract embedding/tokens, register a voice_id immediately. No\n  training queue for the instant tier. Mark the voice `tier: instant`, and\n  only escalate to a trained deep tier (with the father's per-case approval)\n  if the instant clone cannot hold accent/timbre for the intended use.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-04",
+    "title": "Word-Level Emotion Control as Semantic Tokens",
+    "what_it_does": "Emotion is not a global preset knob. Directions like `[laugh]`, `[whispers]`, `[super happy]`, `[prolonged laugh]`, `[inhale]`, `[angry]`, `[emphasis]`, `[in a hurry]` are processed as semantic tokens inside the text stream — first-class instructions attached to specific words, not post-hoc effects. Reporting cites 15,000+ natural-language controls.",
+    "why_it_works": "Prosody is local: the right emotion on the wrong word sounds wrong, and a flat \"happy\" preset over a whole paragraph sounds robotic. Token-level control lets direction attach exactly where the meaning lives, producing performances instead of reads.",
+    "genesis_implementation": "The script DSL should accept inline bracket tags (unknown tags → logged fallback to neutral, never invented prosody). The Slow-AR planner (T-01) consumes tags at word granularity. Keep a controlled vocabulary plus free-form tags; log every tag the renderer ignores so direction quality is measurable.",
+    "raw": "- **What it does:** Emotion is not a global preset knob. Directions like\n  `[laugh]`, `[whispers]`, `[super happy]`, `[prolonged laugh]`, `[inhale]`,\n  `[angry]`, `[emphasis]`, `[in a hurry]` are processed as semantic tokens\n  inside the text stream — first-class instructions attached to specific\n  words, not post-hoc effects. Reporting cites 15,000+ natural-language\n  controls.\n- **Why it works:** Prosody is local: the right emotion on the wrong word\n  sounds wrong, and a flat \"happy\" preset over a whole paragraph sounds\n  robotic. Token-level control lets direction attach exactly where the\n  meaning lives, producing performances instead of reads.\n- **GENESIS implementation:** The script DSL should accept inline bracket\n  tags (unknown tags → logged fallback to neutral, never invented prosody).\n  The Slow-AR planner (T-01) consumes tags at word granularity. Keep a\n  controlled vocabulary plus free-form tags; log every tag the renderer\n  ignores so direction quality is measurable.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-05",
+    "title": "Plain-Language Direction Layer (Drama 3)",
+    "what_it_does": "The newest generation (Drama 3, gated preview) accepts direction as ordinary natural-language descriptions of tone, pacing, and character — no rigid tag syntax, no parameter panel. It reportedly handles mid-sentence voice shifts and direction edits via re-description.",
+    "why_it_works": "Directors think in words, not sliders. A natural-language direction layer removes the translation step between \"say it like you're in a hurry\" and the 12 parameter tweaks that currently approximate it.",
+    "genesis_implementation": "Layer a director's-note field over the tag system: free-form English description → parsed into the same word-level tag stream (T-04) as a first-class input. This makes direction accessible to non-technical users (the father) without losing the precision of the tag layer underneath.",
+    "raw": "- **What it does:** The newest generation (Drama 3, gated preview) accepts\n  direction as ordinary natural-language descriptions of tone, pacing, and\n  character — no rigid tag syntax, no parameter panel. It reportedly handles\n  mid-sentence voice shifts and direction edits via re-description.\n- **Why it works:** Directors think in words, not sliders. A\n  natural-language direction layer removes the translation step between\n  \"say it like you're in a hurry\" and the 12 parameter tweaks that\n  currently approximate it.\n- **GENESIS implementation:** Layer a director's-note field over the tag\n  system: free-form English description → parsed into the same word-level\n  tag stream (T-04) as a first-class input. This makes direction accessible\n  to non-technical users (the father) without losing the precision of the\n  tag layer underneath.",
+    "modules": [
+     "voice",
+     "wakeword"
+    ]
+   },
+   {
+    "id": "T-06",
+    "title": "Native Multi-Speaker Dialogue in One Pass",
+    "what_it_does": "The model generates interleaved multi-speaker dialogue in a single pass using `<|speaker:0|>`, `<|speaker:1|>`, … markers in the text, with one voice reference per speaker (`reference_id: [id0, id1]`). Turn dynamics (who speaks when, interruptions) are modeled natively, not by stitching separate single-speaker renders.",
+    "why_it_works": "Stitched dialogue drifts: loudness, pace, breath, and room feel mismatch at every seam. Native generation keeps acoustic continuity and conversational dynamics consistent across turns.",
+    "genesis_implementation": "Support a dialogue script format with speaker markers and per-speaker voice bindings as a first-class render mode in the voice module. Cross-voice acoustic continuity (matching pace/breath at turn boundaries) becomes a QC metric (see W-04).",
+    "raw": "- **What it does:** The model generates interleaved multi-speaker dialogue\n  in a single pass using `<|speaker:0|>`, `<|speaker:1|>`, … markers in the\n  text, with one voice reference per speaker (`reference_id: [id0, id1]`).\n  Turn dynamics (who speaks when, interruptions) are modeled natively, not\n  by stitching separate single-speaker renders.\n- **Why it works:** Stitched dialogue drifts: loudness, pace, breath, and\n  room feel mismatch at every seam. Native generation keeps acoustic\n  continuity and conversational dynamics consistent across turns.\n- **GENESIS implementation:** Support a dialogue script format with speaker\n  markers and per-speaker voice bindings as a first-class render mode in the\n  voice module. Cross-voice acoustic continuity (matching pace/breath at\n  turn boundaries) becomes a QC metric (see W-04).",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-07",
+    "title": "Surgical Single-Word Regeneration",
+    "what_it_does": "Drama 3 can reportedly fix a single word without regenerating the rest of a take — re-render only the bad word and drop it into the existing audio.",
+    "why_it_works": "Full re-renders are expensive (compute + new seams + new QC surface). If the tokenizer boundary is clean and the acoustic context is re-supplied, a one-word patch is both cheaper and more consistent than a full take.",
+    "genesis_implementation": "Build the render pipeline so every utterance keeps its token stream + reference context cached. A \"patch word\" API re-renders just the target word and splices it in, with an automatic seam check (loudness/pace/breath continuity on both sides). Full re-render is the fallback only when the patch fails QC.",
+    "raw": "- **What it does:** Drama 3 can reportedly fix a single word without\n  regenerating the rest of a take — re-render only the bad word and drop it\n  into the existing audio.\n- **Why it works:** Full re-renders are expensive (compute + new seams +\n  new QC surface). If the tokenizer boundary is clean and the acoustic\n  context is re-supplied, a one-word patch is both cheaper and more\n  consistent than a full take.\n- **GENESIS implementation:** Build the render pipeline so every utterance\n  keeps its token stream + reference context cached. A \"patch word\" API\n  re-renders just the target word and splices it in, with an automatic seam\n  check (loudness/pace/breath continuity on both sides). Full re-render is\n  the fallback only when the patch fails QC.",
+    "modules": [
+     "lab",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-08",
+    "title": "Streaming With ~90 ms Time-to-First-Audio + Latency Tiers",
+    "what_it_does": "The API reports roughly 90 ms time-to-first-audio on the standard endpoint (~70 ms on a single request) with selectable latency modes: normal (best quality) vs. balanced (~300 ms) for real-time use. Streaming works over HTTP chunks and WebSocket.",
+    "why_it_works": "Conversational voice lives or dies on first-chunk latency. A two-tier latency contract lets the caller choose quality for narration and speed for dialogue instead of paying one mode's cost for the other's job.",
+    "genesis_implementation": "The conversational voice path must expose `latency: normal | balanced` per request, stream audio in chunks, and target sub-500 ms first-audio on-device. Latency budget is a logged KPI per session (see W-03).",
+    "raw": "- **What it does:** The API reports roughly 90 ms time-to-first-audio on the\n  standard endpoint (~70 ms on a single request) with selectable latency\n  modes: normal (best quality) vs. balanced (~300 ms) for real-time use.\n  Streaming works over HTTP chunks and WebSocket.\n- **Why it works:** Conversational voice lives or dies on first-chunk\n  latency. A two-tier latency contract lets the caller choose quality for\n  narration and speed for dialogue instead of paying one mode's cost for\n  the other's job.\n- **GENESIS implementation:** The conversational voice path must expose\n  `latency: normal | balanced` per request, stream audio in chunks, and\n  target sub-500 ms first-audio on-device. Latency budget is a logged KPI\n  per session (see W-03).",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-11",
+    "title": "Rich-Transcription Round-Trip QC",
+    "what_it_does": "A rich-transcription model (fine-tuned to transcribe words AND annotate vocal events/turns as natural-language instructions) is used during RL to re-transcribe generated audio and diff it against the original prompt — penalizing hallucinations, missing words, and ignored vocal instructions automatically.",
+    "why_it_works": "It turns QC into a closed loop: generation → listen back (machine) → compare → score. Catches the most common TTS failure modes (skipped/repeated words, wrong emotion) without human ears.",
+    "genesis_implementation": "Every non-trivial voice render passes through automatic round-trip transcription; word-error and instruction-adherence deltas are logged. A render that drops or adds words FAILS closed and is re-rendered before any human listens. This is the cheapest possible verify step (T-01 pattern from the Astra pack, applied to voice).",
+    "raw": "- **What it does:** A rich-transcription model (fine-tuned to transcribe\n  words AND annotate vocal events/turns as natural-language instructions)\n  is used during RL to re-transcribe generated audio and diff it against\n  the original prompt — penalizing hallucinations, missing words, and\n  ignored vocal instructions automatically.\n- **Why it works:** It turns QC into a closed loop: generation → listen\n  back (machine) → compare → score. Catches the most common TTS failure\n  modes (skipped/repeated words, wrong emotion) without human ears.\n- **GENESIS implementation:** Every non-trivial voice render passes through\n  automatic round-trip transcription; word-error and instruction-adherence\n  deltas are logged. A render that drops or adds words FAILS closed and is\n  re-rendered before any human listens. This is the cheapest possible\n  verify step (T-01 pattern from the Astra pack, applied to voice).",
+    "modules": [
+     "lab",
+     "report",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-12",
+    "title": "Voice Design From Text Description",
+    "what_it_does": "A new voice can be created from a natural-language description (age, gender, tone, character) instead of a reference clip — \"design\" the voice, then use it like any cloned voice.",
+    "why_it_works": "It removes the enrollment step entirely for use cases where no real person's voice is involved (characters, assistants, narration personas), and it makes voice selection a creative act rather than a library search.",
+    "genesis_implementation": "Offer a `design` enrollment path: description → generated voice model → father audition (listen before activation). Designed voices are marked `origin: designed` and carry a permanent synthetic-provenance tag so the 369 publish gate can never mistake them for a real person's recording.",
+    "raw": "- **What it does:** A new voice can be created from a natural-language\n  description (age, gender, tone, character) instead of a reference clip —\n  \"design\" the voice, then use it like any cloned voice.\n- **Why it works:** It removes the enrollment step entirely for use cases\n  where no real person's voice is involved (characters, assistants,\n  narration personas), and it makes voice selection a creative act rather\n  than a library search.\n- **GENESIS implementation:** Offer a `design` enrollment path: description\n  → generated voice model → father audition (listen before activation).\n  Designed voices are marked `origin: designed` and carry a permanent\n  synthetic-provenance tag so the 369 publish gate can never mistake them\n  for a real person's recording.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "T-13",
+    "title": "Open-Weight Core + Self-Hostability (data sovereignty)",
+    "what_it_does": "Fish Speech / S1-mini weights are published open-source, so teams can self-host the models in their own VPC or air-gapped environments when data residency matters. The hosted API and the open weights coexist as two tiers of the same product.",
+    "why_it_works": "Voice data is sensitive. For the father's own voice — the one voice GENESIS will speak with — the recording and the embedding should never have to leave his device. Open weights make \"your voice never leaves your hardware\" a real architecture, not a promise.",
+    "genesis_implementation": "STRONG RECOMMENDATION for the voice module: default to a self-hosted/local inference path for the father's voice (station module owns the local runtime). Cloud API is a fallback the father must explicitly enable per case. Enrollment recordings and embeddings live on-device; sync only with his approval.",
+    "raw": "- **What it does:** Fish Speech / S1-mini weights are published\n  open-source, so teams can self-host the models in their own VPC or\n  air-gapped environments when data residency matters. The hosted API and\n  the open weights coexist as two tiers of the same product.\n- **Why it works:** Voice data is sensitive. For the father's own voice —\n  the one voice GENESIS will speak with — the recording and the embedding\n  should never have to leave his device. Open weights make \"your voice\n  never leaves your hardware\" a real architecture, not a promise.\n- **GENESIS implementation:** STRONG RECOMMENDATION for the voice module:\n  default to a self-hosted/local inference path for the father's voice\n  (station module owns the local runtime). Cloud API is a fallback the\n  father must explicitly enable per case. Enrollment recordings and\n  embeddings live on-device; sync only with his approval.",
+    "modules": [
+     "station",
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-01",
+    "title": "Write-For-Ears, Not For-Eyes",
+    "use_when": "preparing any script GENESIS will speak.",
+    "pattern": "A script that reads well silently usually speaks badly. Write short sentences, one idea per sentence, explicit punctuation for pauses. Numbers, acronyms, and symbols must be spelled as they should be spoken.",
+    "template": " > Before any text reaches the renderer, normalize it: > \"369\" → \"three six nine\"; \"YPP\" → \"Y P P\"; \"10:30\" → \"ten thirty\"; > remove URLs, expand abbreviations via the pronunciation dictionary. > A script is render-ready only when a human could read it aloud cold.",
+    "raw": "- **Use when:** preparing any script GENESIS will speak.\n- **Pattern:** A script that reads well silently usually speaks badly. Write\n  short sentences, one idea per sentence, explicit punctuation for pauses.\n  Numbers, acronyms, and symbols must be spelled as they should be spoken.\n- **Template:**\n  > Before any text reaches the renderer, normalize it:\n  > \"369\" → \"three six nine\"; \"YPP\" → \"Y P P\"; \"10:30\" → \"ten thirty\";\n  > remove URLs, expand abbreviations via the pronunciation dictionary.\n  > A script is render-ready only when a human could read it aloud cold.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-02",
+    "title": "Word-Level Direction Tags (emotion is a token)",
+    "use_when": "the delivery needs emotion, pacing, or non-speech sounds on specific words.",
+    "pattern": "Put the direction exactly where it belongs in the script, with bracket tags — read in context: `[warm tone]`, `[calm]`, `[whispers]`, `[laughs]`, `[sighs]`, `[emphasis]`, `[in a hurry]`, `[inhale]`, `[prolonged laugh]`. Tags attach to the word they follow or precede; a global preset is a last resort, never the default.",
+    "template": " > `[warm tone] Good morning. [calm] Three items are ready for your decision > today. [emphasis] The second one cannot wait.` > Tags are hints, not guarantees — the renderer falls back to neutral > delivery for unknown tags and logs the miss (never invents prosody).",
+    "raw": "- **Use when:** the delivery needs emotion, pacing, or non-speech sounds on\n  specific words.\n- **Pattern:** Put the direction exactly where it belongs in the script,\n  with bracket tags — read in context: `[warm tone]`, `[calm]`,\n  `[whispers]`, `[laughs]`, `[sighs]`, `[emphasis]`, `[in a hurry]`,\n  `[inhale]`, `[prolonged laugh]`. Tags attach to the word they follow or\n  precede; a global preset is a last resort, never the default.\n- **Template:**\n  > `[warm tone] Good morning. [calm] Three items are ready for your decision\n  > today. [emphasis] The second one cannot wait.`\n  > Tags are hints, not guarantees — the renderer falls back to neutral\n  > delivery for unknown tags and logs the miss (never invents prosody).",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-03",
+    "title": "Plain-Language Director's Note",
+    "use_when": "the direction is too nuanced for tags, or the director is the father himself (non-technical).",
+    "pattern": "Write the direction as an ordinary sentence describing tone, pacing, and character — \"say it like a calm morning briefing, unhurried\" — and let the system compile it into word-level tags (P-02). The note is the human interface; the tags are the machine interface.",
+    "template": " > `DIRECTION: calm morning briefing, unhurried, warm but not cheerful. > Emphasize the second item.` > Compiled to tags by the director layer; the compiled tag stream is > inspectable so the father can see exactly what the note became.",
+    "raw": "- **Use when:** the direction is too nuanced for tags, or the director is\n  the father himself (non-technical).\n- **Pattern:** Write the direction as an ordinary sentence describing tone,\n  pacing, and character — \"say it like a calm morning briefing, unhurried\"\n  — and let the system compile it into word-level tags (P-02). The note is\n  the human interface; the tags are the machine interface.\n- **Template:**\n  > `DIRECTION: calm morning briefing, unhurried, warm but not cheerful.\n  > Emphasize the second item.`\n  > Compiled to tags by the director layer; the compiled tag stream is\n  > inspectable so the father can see exactly what the note became.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-04",
+    "title": "Speaker-Marked Dialogue Scripts",
+    "use_when": "GENESIS must voice a multi-speaker scene (two assistant personas, a rehearsal, a summary of a conversation).",
+    "pattern": "One script, one pass. Bind each voice once at the top, then mark turns inline: `<|speaker:0|>`, `<|speaker:1|>`, … Never write two separate scripts and stitch them — seams betray stitching.",
+    "template": " > `VOICES: 0 = host (calm), 1 = guest (energetic)` > `<|speaker:0|> Welcome back. <|speaker:1|> Glad to be here!` > Render in a single pass; QC checks pace/breath continuity across every > turn boundary.",
+    "raw": "- **Use when:** GENESIS must voice a multi-speaker scene (two assistant\n  personas, a rehearsal, a summary of a conversation).\n- **Pattern:** One script, one pass. Bind each voice once at the top, then\n  mark turns inline: `<|speaker:0|>`, `<|speaker:1|>`, … Never write two\n  separate scripts and stitch them — seams betray stitching.\n- **Template:**\n  > `VOICES: 0 = host (calm), 1 = guest (energetic)`\n  > `<|speaker:0|> Welcome back. <|speaker:1|> Glad to be here!`\n  > Render in a single pass; QC checks pace/breath continuity across every\n  > turn boundary.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-05",
+    "title": "Reference Clip Curation (one clip, one voice, finished sentence)",
+    "use_when": "creating a zero-shot voice reference.",
+    "pattern": "15–30 seconds of clean speech, one microphone, one room, consistent energy. The clip's transcript must be EXACT (word-for-word), because the reference tokens anchor on it. End the clip on a finished sentence — a mid-sentence cut makes the clone leak the last word onto the start of every generated line. One reference per voice; reuse the same reference for every line of a session.",
+    "template": " > Record → transcribe verbatim → trim to the last complete sentence → > check single-speaker, no overlap, no background music → register as the > voice's reference. Noisy room? Shorter and quieter beats longer and > noisier.",
+    "raw": "- **Use when:** creating a zero-shot voice reference.\n- **Pattern:** 15–30 seconds of clean speech, one microphone, one room,\n  consistent energy. The clip's transcript must be EXACT (word-for-word),\n  because the reference tokens anchor on it. End the clip on a finished\n  sentence — a mid-sentence cut makes the clone leak the last word onto the\n  start of every generated line. One reference per voice; reuse the same\n  reference for every line of a session.\n- **Template:**\n  > Record → transcribe verbatim → trim to the last complete sentence →\n  > check single-speaker, no overlap, no background music → register as the\n  > voice's reference. Noisy room? Shorter and quieter beats longer and\n  > noisier.",
+    "modules": [
+     "station",
+     "voice"
+    ]
+   },
+   {
+    "id": "P-06",
+    "title": "Patch-One-Word, Not Re-Render",
+    "use_when": "a render has one mispronounced or mis-emphasized word.",
+    "pattern": "Re-render ONLY the bad word with the original context, splice it in, and verify the seam: loudness, pace, and breath must match on both sides. Full re-render is the fallback only when the patch fails QC.",
+    "template": " > `PATCH word #12 (\"three-six-nine\") → re-render with context ±5 words → > seam-check (loudness ±2 dB, pace continuity) → PASS → keep; FAIL → > full re-render.`",
+    "raw": "- **Use when:** a render has one mispronounced or mis-emphasized word.\n- **Pattern:** Re-render ONLY the bad word with the original context, splice\n  it in, and verify the seam: loudness, pace, and breath must match on both\n  sides. Full re-render is the fallback only when the patch fails QC.\n- **Template:**\n  > `PATCH word #12 (\"three-six-nine\") → re-render with context ±5 words →\n  > seam-check (loudness ±2 dB, pace continuity) → PASS → keep; FAIL →\n  > full re-render.`",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-07",
+    "title": "Consent + Provenance Header (private by default)",
+    "use_when": "any new voice enters the GENESIS system.",
+    "pattern": "Every voice record opens with a provenance header: whose voice, consent recording reference, scope (which purposes), created date, and visibility. Visibility defaults to PRIVATE — public sharing is an explicit, logged opt-in, never the default.",
+    "template": " > `VOICE-RECORD: owner=Younes M.; consent=rec-2026-10-13-consent.mp3; > scope=personal-assistant-only; visibility=private; created=2026-10-13` > No header, no voice. No consent recording, no cloning. Designed voices > carry `origin=designed` + synthetic-provenance for the publish gate.",
+    "raw": "- **Use when:** any new voice enters the GENESIS system.\n- **Pattern:** Every voice record opens with a provenance header: whose\n  voice, consent recording reference, scope (which purposes), created date,\n  and visibility. Visibility defaults to PRIVATE — public sharing is an\n  explicit, logged opt-in, never the default.\n- **Template:**\n  > `VOICE-RECORD: owner=Younes M.; consent=rec-2026-10-13-consent.mp3;\n  > scope=personal-assistant-only; visibility=private; created=2026-10-13`\n  > No header, no voice. No consent recording, no cloning. Designed voices\n  > carry `origin=designed` + synthetic-provenance for the publish gate.",
+    "modules": [
+     "voice"
+    ]
+   },
+   {
+    "id": "P-08",
+    "title": "Normalize Before You Render (byte-aware)",
+    "use_when": "any text enters the render queue, especially multilingual.",
+    "pattern": "Normalization is a separate, inspectable stage: strip what cannot be spoken, expand what must be spelled, and compute the input byte count. Byte metering means non-ASCII languages cost more per word — the normalizer reports bytes in, expected seconds out, BEFORE the render runs, so cost is known up front.",
+    "template": " > `INTAKE: text=\"…\" → normalized=\"…\" → 412 UTF-8 bytes → est. ~35 s > audio → render approved / exceeds budget → escalate to father.` --- ## Composition rule Scripts are composed in three layers, always in this order: **(1) P-08 normalize** the raw text, **(2) P-02/P-03 direction** (tags or director's note) on the normalized text, **(3) P-04/P-06 render strategy** (single voice, dialogue, or patch). **P-05** governs the voice reference and **P-07** governs the voice's legal existence — neither ever shares a stage with production rendering. A script that skips layer 1 or lacks a provenance header for its voice is not render-ready.",
+    "raw": "- **Use when:** any text enters the render queue, especially multilingual.\n- **Pattern:** Normalization is a separate, inspectable stage: strip what\n  cannot be spoken, expand what must be spelled, and compute the input byte\n  count. Byte metering means non-ASCII languages cost more per word — the\n  normalizer reports bytes in, expected seconds out, BEFORE the render\n  runs, so cost is known up front.\n- **Template:**\n  > `INTAKE: text=\"…\" → normalized=\"…\" → 412 UTF-8 bytes → est. ~35 s\n  > audio → render approved / exceeds budget → escalate to father.`\n\n---\n\n## Composition rule\n\nScripts are composed in three layers, always in this order: **(1) P-08\nnormalize** the raw text, **(2) P-02/P-03 direction** (tags or director's\nnote) on the normalized text, **(3) P-04/P-06 render strategy** (single\nvoice, dialogue, or patch). **P-05** governs the voice reference and **P-07**\ngoverns the voice's legal existence — neither ever shares a stage with\nproduction rendering. A script that skips layer 1 or lacks a provenance\nheader for its voice is not render-ready.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-01",
+    "title": "Voice Enrollment (cloning the father's voice)",
+    "body": "The identity-gated onboarding for the one voice GENESIS will speak with.\nLocal/self-hosted path preferred (T-13).\n\n1. **CONSENT** — The father records a spoken consent phrase (his voice, his\n   words, naming the purpose: personal assistant). Stored with timestamp;\n   required before anything else. Entry: explicit request to enroll a\n   voice. Exit: consent recording exists, or the workflow stops\n   (fail-closed).\n2. **SAMPLE** — Record enrollment audio: 15–30 seconds of natural speech\n   (P-05), one microphone, one room, consistent energy; transcribed\n   verbatim; trimmed to the last complete sentence. Entry: consent on file.\n   Exit: single-speaker, clean sample (no overlap, no background noise, no\n   music), or re-record.\n3. **REGISTER** — Encoder extracts reference tokens; the voice record is\n   created with tier=instant, consent reference, scope, and\n   visibility=private (P-07). Exit: voice_id usable in any TTS call\n   immediately.\n4. **VERIFY** — Generate 3 test phrases (greeting, father's name, one\n   acronym like \"YPP\"); the father listens and approves. Entry: registered\n   voice_id. Exit: father approval, or return to SAMPLE with notes.\n5. **PROMOTE (optional, deep tier)** — If instant fidelity is insufficient\n   for daily use: longer clean session, trained clone, father's explicit\n   per-case approval. Exit: tier=trained, QC'd on a long passage before\n   activation.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Cloning someone else's voice | Consent recording IS the speaker's voice; mismatch = abort |\n| Bad sample → bad clone forever | VERIFY stage listens before any real use |\n| Voice shared publicly by default | Visibility defaults to private; public is an explicit logged opt-in |\n| Enrollment data leaves the device | Local path default; cloud fallback needs father's per-case approval |\n| Voice used beyond consent scope | Consent names the purpose; new purpose = new consent |",
+    "modules": [
+     "hands",
+     "station",
+     "voice"
+    ]
+   },
+   {
+    "id": "W-02",
+    "title": "TTS Production Pipeline (script → finished audio)",
+    "body": "The pipeline for any non-conversational speech (briefings, announcements,\nnarrations for the father).\n\n1. **INTAKE** — Text + intent (briefing / announcement) + target voice_id\n   + direction note. Entry: voice has a valid P-07 provenance header.\n   Exit: intake accepted, or rejected (missing provenance = no render).\n2. **NORMALIZE** — P-08 + P-01: strip unpronounceable content, expand\n   numbers/acronyms, compute input byte count and cost estimate. Entry:\n   intake accepted. Exit: render-ready script + byte cost, or escalation\n   if over budget.\n3. **DIRECT** — Compile direction (P-02 tags / P-03 director's note) onto\n   the normalized script. Entry: render-ready script. Exit: directed\n   script with inspectable tag stream.\n4. **RENDER** — Generate via the two-stage path (T-01/T-02): semantic plan\n   then acoustic render, chunked streaming for long text. Entry: directed\n   script. Exit: raw audio.\n5. **ROUND-TRIP QC** — Automatic re-transcription (T-11): diff words and\n   vocal instructions against the prompt. Check the triple rubric (T-10):\n   semantic accuracy, acoustic quality, speaker similarity. Entry: raw\n   audio. Exit: PASS → delivery; FAIL → W-02 returns to RENDER (with\n   P-06 patch-one-word first), never to delivery.\n6. **DELIVER** — Final audio to the requesting module. Entry: QC PASS.\n   Exit: delivered with QC report attached (word-error delta, bytes in,\n   seconds out, render cost).\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Synthetic audio reaches 369 content | Provenance tag checked at delivery; publish gate fails closed on synthetic |\n| Mispronunciations / skipped words ship | Round-trip QC fails closed; patch-before-rerender keeps cost down |\n| Cost surprise on long renders | Byte count + estimate reported at NORMALIZE, before render |\n| Wrong emotion lands on the wrong word | Tag stream is inspectable at DIRECT; QC checks instruction adherence |",
+    "modules": [
+     "lab",
+     "report",
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "W-03",
+    "title": "Live Conversational Loop (streaming dialogue)",
+    "body": "The real-time voice path: the father speaks, GENESIS answers aloud with\nlow latency.\n\n1. **LISTEN** — Capture the father's utterance (wakeword module hands off\n   the turn). Entry: turn detected. Exit: audio chunk stream + end-of-turn\n   signal.\n2. **THINK** — Language model produces the reply text + a brief direction\n   (tone of the reply). Entry: end-of-turn. Exit: reply text + direction,\n   within the think budget.\n3. **STREAM** — Render with `latency: balanced` (T-08), stream chunks as\n   they arrive, target sub-500 ms time-to-first-audio. Entry: reply text\n   ready. Exit: first chunk playing, or fallback escalation.\n4. **TURN-TAKE** — Handle interruption: if the father speaks mid-reply,\n   stop the stream, keep the cutoff transcript, and return to LISTEN with\n   context preserved. Entry: new speech while streaming. Exit: clean stop\n   + resume state.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Latency blows the conversational budget | Latency tier logged per turn; persistent misses escalate to shorter replies |\n| Interruption loses the thread | Cutoff transcript is retained; next turn continues, not restarts |\n| Render fails mid-stream | Fallback: finish the turn as text (chat), never as silence |\n| Streaming cost spikes | Balanced-tier only for live turns; narration uses normal-tier (W-02) |",
+    "modules": [
+     "hands",
+     "voice",
+     "wakeword"
+    ]
+   },
+   {
+    "id": "W-04",
+    "title": "Multi-Character Dialogue Scene (single pass)",
+    "body": "For scenes GENESIS voices with more than one speaker (rehearsals,\nsummaries of conversations, character demos — father-facing only).\n\n1. **CAST** — Bind each speaker to a voice (reference_id list); each voice\n   has a valid provenance header (P-07). Entry: scene request. Exit:\n   cast list, or stop if any voice lacks provenance.\n2. **SCRIPT** — Write one script with `<|speaker:N|>` markers (P-04) plus\n   word-level direction tags (P-02). Entry: cast list. Exit: single-pass\n   script.\n3. **RENDER-ONCE** — Native multi-speaker generation (T-06) in one pass.\n   Entry: script. Exit: scene audio.\n4. **SEAM QC** — At every turn boundary: loudness, pace, and breath\n   continuity checked (T-07's seam check, generalized). Entry: scene\n   audio. Exit: PASS → delivery; FAIL → P-06 patch the offending turn,\n   re-check.\n5. **DELIVER** — Scene audio + cast/QC report. Entry: QC PASS.\n\nFailure modes guarded:\n| Failure | Guard |\n|---|---|\n| Stitched-sounding seams | Single-pass render; seam QC fails closed |\n| A voice in the scene lacks consent | CAST stage stops before any render |\n| One bad turn forces a full re-render | Patch-one-turn first (P-06 pattern), full re-render only on patch failure |\n| Scene mistaken for real people's conversation | Provenance tags on every voice; never used in any public context |\n\n---\n\n## Cross-workflow invariants\n\n1. **Provenance first:** no voice renders without a P-07 header — in any\n   workflow, at any time.\n2. **QC is automatic and fail-closed:** W-02 and W-04 never deliver on a\n   failed check; W-03 degrades to text, never to silence or a broken take.\n3. **Cost is known before it is spent:** byte metering at intake (W-02) and\n   latency-tier choice per turn (W-03).\n4. **The 369 publish gate sits OUTSIDE all of these workflows:** none of\n   these stages has a path to published content. Any synthetic track\n   reaching the gate is rejected — the gate is the last and separate\n   line of defense.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": [
+   "NO AI VOICE LAW (2026-10-09): AI voice is banned in 369 published content. Voice-synthesis techniques in this pack are product capability knowledge for the GENESIS local system only -- the 369 publish path must refuse AI-voice steps at the gate. Capability mapped, violation never."
+  ]
+ },
+ "artflow": {
+  "techniques": [],
+  "prompt_patterns": [
+   {
+    "id": "P-10",
+    "title": "Dialogue Script Card (talking-head preparation)",
+    "use_when": "preparing a scripted talking-head segment.",
+    "pattern": "One card per line of dialogue: speaker identity, voice selection, the exact line, and the emotion tag. The card is the unit of iteration — re-voice one card without touching the rest.",
+    "template": " > Card N — Speaker: <identity>, Voice: <voice_id / description>, > Emotion: <tag>, Line: \"<exact words>\". > **NO AI VOICE LAW: this pattern is documented for pipeline study only. > On 369 content, scripted voice is replaced by: no voice, or human voice.** --- ## Composition rule A full portrait-generation brief is P-01 (identity) + P-04 (scene) + P-02 (style + negative tail) + P-06 (batch selection criteria). Add P-03 when a specific expression is required, P-05 when two subjects share the frame, P-08 when a template owns the layout. P-07 (anti-slop specificity) is MANDATORY on every brief that could reach the 369 technique library — a brief without material specificity is rejected at the gate. P-09 governs how non-English briefs enter the pipeline. P-10 stays in the lab for architecture study; it never reaches 369 production. ## Sources Distilled from public Artflow walkthroughs and reviews (tutorial summaries, tool-directory feature lists, review-site pricing/feature pages listed in ARTFLOW_TECHNIQUES.md). All wording is our own.",
+    "raw": "- **Use when:** preparing a scripted talking-head segment.\n- **Pattern:** One card per line of dialogue: speaker identity, voice\n  selection, the exact line, and the emotion tag. The card is the unit of\n  iteration — re-voice one card without touching the rest.\n- **Template:**\n  > Card N — Speaker: <identity>, Voice: <voice_id / description>,\n  > Emotion: <tag>, Line: \"<exact words>\".\n  > **NO AI VOICE LAW: this pattern is documented for pipeline study only.\n  > On 369 content, scripted voice is replaced by: no voice, or human voice.**\n\n---\n\n## Composition rule\n\nA full portrait-generation brief is P-01 (identity) + P-04 (scene) + P-02\n(style + negative tail) + P-06 (batch selection criteria). Add P-03 when a\nspecific expression is required, P-05 when two subjects share the frame, P-08\nwhen a template owns the layout. P-07 (anti-slop specificity) is MANDATORY on\nevery brief that could reach the 369 technique library — a brief without\nmaterial specificity is rejected at the gate. P-09 governs how non-English\nbriefs enter the pipeline. P-10 stays in the lab for architecture study; it\nnever reaches 369 production.\n\n## Sources\n\nDistilled from public Artflow walkthroughs and reviews (tutorial summaries,\ntool-directory feature lists, review-site pricing/feature pages listed in\nARTFLOW_TECHNIQUES.md). All wording is our own.",
+    "modules": [
+     "lab",
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-03",
+    "title": "Talking-Head Assembly (stage-decoupled)",
+    "body": "- **Entry criteria:** locked portrait asset (from W-02 or approved still);\n  final script locked; voice decision made per standing law.\n- **Steps:**\n  1. Asset prep: crop to portrait spec, mouth visible, single face.\n  2. Voice stage: TTS render per dialogue card (P-10) — OR, per NO AI VOICE\n     law on 369: this stage is SKIPPED and the workflow becomes a\n     captioned/motion treatment instead.\n  3. Lip-sync bind: voice drives mouth; head motion stays within the\n     expression model's range (wide moves and text-on-face route to the\n     expression-motion path, per public walkthrough guidance).\n  4. QC: mouth/face integrity on first, middle, last frame; no text over the\n     mouth; export at target spec.\n- **Exit criteria:** video passes frame QC; dialogue cards all rendered (or\n  voice stage formally waived with reason); cost reconciled.\n- **Guarded failure modes:**\n  - Portrait has text over the mouth → reroute before animation; the lip-sync\n    stage cannot fix a covered mouth.\n  - Voice render sounds wrong → re-voice the single card, never the whole\n    script (this is why the stages are decoupled).\n  - Script longer than the animation model's ceiling → split across clips\n    (two speakers max per clip is the public guidance); never stretch one\n    clip past its model's range.",
+    "modules": [
+     "hands",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ },
+ "claude": {
+  "techniques": [
+   {
+    "id": "T-13",
+    "title": "Emphasis-Calibrated Instruction Design",
+    "what_it_does": "On strong instruction-following models, aggressive emphasis (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the model fires the rule where it doesn't apply. Preferred form: plain instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails are added only after an observed failure, not by default; safety gates stay unconditional but reason-anchored.",
+    "why_it_works": "Over-emphasis creates false triggers and warning noise that gets ignored; reason-anchored instructions hold gates without saturating the agent. Observed-failure guardrails keep the prompt lean.",
+    "genesis_implementation": "A system-prompt style guide for every module: reasons on every standing instruction, no bare CAPS imperatives, guardrail log of observed failures that earned their line. Review prompts on the same schedule as code review — prompt bloat is a bug. --- ## Capability signals: vendor claims vs. independent evidence | Capability | Vendor / official signal | Independent evidence | |---|---|---| | SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent | | Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model | | OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work | | Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload | | Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks | | Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix | | Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ | | Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) | | Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed | | 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size | **Standing rule derived:** vendor numbers are the ceiling claim; independent re-review is the floor we build on. Same discipline as the Astra pack's ARC-AGI-3 lesson. ## Sources - Anthropic engineering blog: Effective Context Engineering for AI Agents; Effective Harnesses for Long-Running Agents; Advanced Tool Use; Building Agents with the Claude Agent SDK - Anthropic official docs: Claude 4 prompt-engineering best practices; prompt caching; API pricing - Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card) - Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026 - Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c - Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08 - Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md - Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md - Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md - Guardrail patterns: https://github.com/elithsheldon/agent-guardrails - Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding - Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md - Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration - Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md All facts above are summaries in our own words of publicly reported information. No copyrighted text reproduced beyond brief attributed phrases.",
+    "raw": "- **What it does:** On strong instruction-following models, aggressive emphasis\n  (CAPS, MUST, CRITICAL) is dialed back because it causes overtriggering — the\n  model fires the rule where it doesn't apply. Preferred form: plain\n  instruction plus a reason (\"Use this tool when… because…\"). Extra guardrails\n  are added only after an observed failure, not by default; safety gates stay\n  unconditional but reason-anchored.\n- **Why it works:** Over-emphasis creates false triggers and warning noise that\n  gets ignored; reason-anchored instructions hold gates without saturating the\n  agent. Observed-failure guardrails keep the prompt lean.\n- **GENESIS implementation:** A system-prompt style guide for every module:\n  reasons on every standing instruction, no bare CAPS imperatives, guardrail\n  log of observed failures that earned their line. Review prompts on the same\n  schedule as code review — prompt bloat is a bug.\n\n---\n\n## Capability signals: vendor claims vs. independent evidence\n\n| Capability | Vendor / official signal | Independent evidence |\n|---|---|---|\n| SWE-bench Verified (code repair) | Opus 4.6: 80.8%; Sonnet 4.6: 79.6% (Anthropic system card) | Compiled reports: Opus 4.7 ~87.6%; GPT-5.5's higher score carries a memorization asterisk per Anthropic's own decontamination analysis — treat leaderboard numbers as harness- and dataset-dependent |\n| Terminal-Bench 2.0 (terminal agents) | Sonnet 4.6: 59.1%; Opus 4.6: 65.4% (system card) | Independent comparison: harness choice alone shifts scores 10+ points — the harness is as load-bearing as the model |\n| OSWorld (computer use) | Sonnet 4.6: 72.5%; Opus 4.6: 72.7% (system card) | Community comparison: Claude beats GPT-5.3-Codex by ~8.5 pts on GUI navigation tasks — Claude's edge is real on visual/desktop work |\n| Long-context retrieval (MRCR v2) | Opus 4.6: 76.0% (system card) | Sonnet 4.6: 51.2% — retrieval strength is tier-dependent, not a family trait; size the model to the retrieval workload |\n| Multi-agent research lift | BrowseComp single 74.01% → multi-agent 82.07% (system-card digest) | Practitioner pattern corroborates: parallel researchers + condensed summaries reliably beat single-agent on synthesis tasks |\n| Parallel subagent scale | Up to 20 parallel subagents, 3 nesting layers (docs) | Traffic analysis by practitioners: ~92 model calls in 13 min with up to 7 parallel subagents observed on a real fix |\n| Pricing | Official price list | Third-party verified Oct 11 2026: Sonnet 5.5 $2/$10, Opus 5.5 $4/$20, Haiku 5.5 $0.10/$0.50 (≤100K prompt); prompt-cache reads up to 90% off; batch 50% off; no long-context surcharge on 4.6+ |\n| Thinking redaction | Anthropic: redaction hides reasoning from UI only, no reasoning loss | AMD AI head reported performance decline correlated with the redaction rollout — contested by Anthropic, unresolved; lesson: never treat vendor explanation as the final word (our LAW-050) |\n| Sycophancy / instruction fade | Anthropic's own research papers document RLHF-driven sycophancy | Practitioners report: standing instructions fade over long sessions; completion bias (claims without proof); task fraud (reporting done without doing) — all independently observed |\n| 1M context window | Standard on 4.6+ at standard pricing | Verified in pricing compilations; retrieval quality at 1M is the open question, not the window size |\n\n**Standing rule derived:** vendor numbers are the ceiling claim; independent\nre-review is the floor we build on. Same discipline as the Astra pack's\nARC-AGI-3 lesson.\n\n## Sources\n\n- Anthropic engineering blog: Effective Context Engineering for AI Agents;\n  Effective Harnesses for Long-Running Agents; Advanced Tool Use;\n  Building Agents with the Claude Agent SDK\n- Anthropic official docs: Claude 4 prompt-engineering best practices;\n  prompt caching; API pricing\n- Claude Sonnet 4.6 system card (anthropic.com/claude-sonnet-4-6-system-card)\n- Practitioner analyses: https://towardsai.com/p/machine-learning/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026\n- Practitioner analyses: https://pub.towardsai.net/claude-code-skills-vs-subagents-vs-hooks-vs-workflows-which-to-use-in-2026-120db6ae5b3c\n- Practitioner analyses: https://medium.com/@dingzhanjun/inside-claude-code-a-deep-dive-into-anthropics-agentic-cli-assistant-a4bedf3e6f08\n- Prompt-practice derivations: https://github.com/getsentry/warden/blob/HEAD/.agents/skills/agent-prompt/references/core-principles.md\n- Prompt-practice derivations: https://github.com/openaec-foundation/open-agents/blob/HEAD/docs/research/skill-performance-prompt-engineering.md\n- Hook mechanism reference: https://github.com/filipexyz/plugins/blob/HEAD/plugins/claude-code-hooks/skills/claude-code-hooks/SKILL.md\n- Guardrail patterns: https://github.com/elithsheldon/agent-guardrails\n- Pricing verifications: https://www.morphllm.com/claude-code-pricing ; https://cabina.ai/blog/claude-api-pricing-guide/ ; https://omidsaffari.com/blog/claude-opus-5-5-for-agents-and-coding\n- Benchmark compilations: https://blog.codercops.com/blog/claude-sonnet-4-6-vs-opus-4-6-comparison-2026 ; https://www.nxcode.io/resources/news/gpt-5-3-codex-vs-claude-sonnet-4-6-coding-comparison-2026 ; https://github.com/iraleebell/models/blob/HEAD/models/claude-sonnet-4.6/digest.md\n- Limitation reports: https://github.com/aarrepan/claude-code-toolkit ; https://medium.com/@timconverse1/claude-code-a-midyear-performance-review-a3fb7e68ca36 ; https://www.techradar.com/pro/claude-cannot-be-trusted-to-perform-complex-engineering-tasks-amd-ai-head-slams-anthropics-coding-tool-after-months-of-frustration\n- Context-engineering summaries: https://github.com/nickcollect/ai-coding-runbook/blob/HEAD/02_Wiki/Summaries/effective-context-engineering-for-ai-agents--anthropic-eng.md ; https://github.com/jamoeight/claude-code-deep-research-v2/blob/HEAD/research/notes/1_anthropic_frontier.md\n\nAll facts above are summaries in our own words of publicly reported information.\nNo copyrighted text reproduced beyond brief attributed phrases.",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-04",
+    "title": "Because-Clause Constraints",
+    "use_when": "writing any standing instruction or guardrail.",
+    "pattern": "Never a bare prohibition; always the prohibition plus its reason. Reasons hold gates; bare imperatives cause false triggers.",
+    "template": " > <Rule>, because <what breaks if it is violated and who pays the cost>. > Example shape: \"Write tests before claiming a fix, because an untested fix > is a guess and a guess that ships becomes my bug.\"",
+    "raw": "- **Use when:** writing any standing instruction or guardrail.\n- **Pattern:** Never a bare prohibition; always the prohibition plus its reason.\n  Reasons hold gates; bare imperatives cause false triggers.\n- **Template:**\n  > <Rule>, because <what breaks if it is violated and who pays the cost>.\n  > Example shape: \"Write tests before claiming a fix, because an untested fix\n  > is a guess and a guess that ships becomes my bug.\"",
+    "modules": [
+     "cloudburst",
+     "ear",
+     "eyes",
+     "habits",
+     "hands",
+     "lab",
+     "memory",
+     "report",
+     "scheduler",
+     "station",
+     "tempemail",
+     "voice",
+     "wakeword"
+    ]
+   }
+  ],
+  "workflows": [],
+  "guardrails": []
+ },
+ "chatgpt": {
+  "techniques": [
+   {
+    "id": "T-11",
+    "title": "Voice as a Task Interface (not just chat)",
+    "what_it_does": "Voice mode accepts spoken commands that trigger multi-step tasks (draft a doc, summarize messages), not just spoken Q&A. Work can start in voice on mobile and continue in text on desktop; if the task is still running when the voice call ends, it continues in text. Background conversations persist across apps.",
+    "why_it_works": "It exploits dead time (walking, driving) for task initiation and decouples input modality from execution — the task doesn't die when the call does.",
+    "genesis_implementation": "The voice module should accept task-level commands (\"draft X\", \"check Y\"), hand a structured job to the scheduler, and let the father continue or inspect it in text. Voice sessions must never be the only record: every voice-initiated task writes its transcript + job id to memory so the text side can resume it.",
+    "raw": "- **What it does:** Voice mode accepts spoken commands that trigger multi-step\n  tasks (draft a doc, summarize messages), not just spoken Q&A. Work can start\n  in voice on mobile and continue in text on desktop; if the task is still\n  running when the voice call ends, it continues in text. Background\n  conversations persist across apps.\n- **Why it works:** It exploits dead time (walking, driving) for task\n  initiation and decouples input modality from execution — the task doesn't\n  die when the call does.\n- **GENESIS implementation:** The voice module should accept task-level\n  commands (\"draft X\", \"check Y\"), hand a structured job to the scheduler,\n  and let the father continue or inspect it in text. Voice sessions must\n  never be the only record: every voice-initiated task writes its transcript\n  + job id to memory so the text side can resume it.",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   },
+   {
+    "id": "T-12",
+    "title": "The Mode-Drift Lesson (voice macro-state)",
+    "what_it_does": "",
+    "why_it_works": "",
+    "genesis_implementation": "Add intent-shift detection to voice (and long chat sessions): track the current conversational mode (companionship / tasking / analysis / decision) and re-derive the response strategy when the inferred mode changes twice in a row. Log mode transitions. This is the gap ChatGPT itself leaves open — a place where GENESIS can be better.",
+    "raw": "- **What it does (as a warning):** Independent user reports document that\n  voice conversations can stay excellent at the micro level (turn-taking,\n  naturalness) while drifting at the macro level: when the user's intent\n  shifts from \"keep me company\" to \"think through this with me\", the\n  assistant keeps its original response strategy instead of adapting.\n- **Why it matters:** It's the failure mode of long conversational sessions\n  — the surface feels right while the substance stalls. No product\n  mechanism currently fixes it.\n- **GENESIS implementation:** Add intent-shift detection to voice (and long\n  chat sessions): track the current conversational mode (companionship /\n  tasking / analysis / decision) and re-derive the response strategy when\n  the inferred mode changes twice in a row. Log mode transitions. This is\n  the gap ChatGPT itself leaves open — a place where GENESIS can be better.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "prompt_patterns": [
+   {
+    "id": "P-09",
+    "title": "Voice-to-Text Handoff",
+    "use_when": "the father initiates a task by voice (T-11).",
+    "pattern": "Voice captures intent and starts the job; text owns the record. Every voice-initiated task writes its transcript plus job id to memory immediately, so the text side can resume, inspect, or correct it.",
+    "template": " > Voice command received: <transcript>. > Starting job <id> for: <parsed intent>. > Written record stored at: <memory location>. > Continue or correct me in text anytime; the job does not depend on this call.",
+    "raw": "- **Use when:** the father initiates a task by voice (T-11).\n- **Pattern:** Voice captures intent and starts the job; text owns the record.\n  Every voice-initiated task writes its transcript plus job id to memory\n  immediately, so the text side can resume, inspect, or correct it.\n- **Template:**\n  > Voice command received: <transcript>.\n  > Starting job <id> for: <parsed intent>.\n  > Written record stored at: <memory location>.\n  > Continue or correct me in text anytime; the job does not depend on this call.",
+    "modules": [
+     "voice"
+    ]
+   }
+  ],
+  "workflows": [
+   {
+    "id": "W-04",
+    "title": "Voice-First Capture-to-Done",
+    "body": "For hands-free task initiation (T-11, P-09).\n\n1. **CAPTURE** — Father speaks a task command. Voice transcribes and parses\n   intent.\n   Exit: transcript + parsed intent exist.\n2. **STRUCTURE** — Intent becomes a scheduler job with goal, constraints,\n   budget. The written record (transcript + job id) is stored to memory\n   immediately.\n   Exit: job registered; text side can see it.\n3. **EXECUTE** — Job runs in text (scheduler + hands). The voice call may\n   end; the job continues independently.\n   Exit: result or blocker with evidence.\n4. **RESUME** — Father continues in text or a later voice call; the system\n   presents status from the written record, never from voice memory alone.\n   Exit: father confirms outcome or issues corrections (which update the\n   job, W-03 amend rule).\n5. **MODE CHECK** — After intent shifts (T-12): re-derive the conversational\n   mode and adjust response strategy; log the transition.\n   Exit: response strategy matches the current mode.\n\nGuarded failure modes: task dies with the call (STRUCTURE decouples them),\nvoice-only state lost (written record is the source of truth), mode drift\n(MODE CHECK detector).\n\n---\n\n## Failure modes each workflow guards against\n\n| Workflow | Primary failure mode | Guard |\n|---|---|---|\n| W-01 | Untested assistant drifting in production | Preview gate with test script |\n| W-02 | Stale/contradictory memory in long jobs | Nightly consolidation + handoff-wins rule |\n| W-03 | Misunderstood schedule firing silently | Confirm-before-live + hub visibility |\n| W-04 | Work lost when voice call ends | Written record as source of truth |\n\n## Sources\n\nWorkflows reverse-engineered from public product descriptions: the GPT Builder\nflow (multiple 2026 builder guides), Projects + memory usage patterns\n(medium.com, mba-training.com), scheduled-tasks setup\n(medium.com/@arniekuenn), voice agentic features (techcrunch.com,\nadgully.com, toolwise.ai). All designs are our own.\n\n[END OF CHATGPT_WORKFLOWS.md — marker line, do not remove in edits]",
+    "modules": [
+     "scheduler",
+     "voice"
+    ]
+   }
+  ],
+  "guardrails": []
+ }
+}

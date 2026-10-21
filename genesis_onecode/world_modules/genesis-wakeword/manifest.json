@@ -1,0 +1,28 @@
+{
+ "name": "genesis-wakeword",
+ "version": "1.0.0",
+ "description": "On-device wake-word detector (default keyword 'genesis'); enrollment required; CPU-only, no network.",
+ "entry": "wakeword_facade.py",
+ "factory": "WakeWordDetectorModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "requirements.txt",
+  "wakeword.py",
+  "wakeword_facade.py",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "ad4f1fe9a909dd0221ab0560e5cf469b8d44f2256a72e54ac7389d32785bc285",
+  "requirements.txt": "08e7445314b2d02aebad9dec7384774340581acb89fa7d50a03907cff0d1bd36",
+  "wakeword.py": "8f20eb7ba87aafe38c5150cf892caf18e04664a00d11e68a1b162d066fb176d8",
+  "wakeword_facade.py": "c995d3b40ec6a7970baf63ee62010d68677fa4c042cf4fcc266091e2b72d06a6",
+  "knowledge/__init__.py": "6dbfbd9ff679a5e3620c4c297e1c85e49a3bee2f3a29e1e1e7fe778601faf78f",
+  "knowledge/registry.py": "9fa2d3454daaf10de78c1e3fc193c1533c8f8f6d34feaf4c4dd1f504f96b6cf3",
+  "knowledge/packs.json": "eb0c0ba759b35ec7ba148ce16d77bcb9d93f331e8f55a98439bc670ece27f28c",
+  "knowledge/test_knowledge.py": "a423e24109f39b54f57aa554305dd3c4942598f9a63af96010ee2a1212223158"
+ }
+}

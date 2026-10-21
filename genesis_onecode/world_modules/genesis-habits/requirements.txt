@@ -1,0 +1,2 @@
+# genesis-habits: no third-party dependencies.
+# stdlib only: sqlite3, json, time, uuid, pathlib.

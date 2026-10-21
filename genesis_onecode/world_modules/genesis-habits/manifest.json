@@ -1,0 +1,28 @@
+{
+ "name": "genesis-habits",
+ "version": "1.0.0",
+ "description": "Watches behavior events, detects repeating patterns, raises proposals. Proposals never auto-execute (fail-closed).",
+ "entry": "habits_facade.py",
+ "factory": "HabitsModule",
+ "min_core_version": "3.0.0",
+ "files": [
+  "README.md",
+  "habits.py",
+  "habits_facade.py",
+  "requirements.txt",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "README.md": "239d1d4ad80d197239af15f95c4c1bebc7b7c2ff70ce544dd5485a96759e0600",
+  "habits.py": "b041ef72f1a79b755e5188ec9eeb56bfbea6c127700d59e753a471806ea8c43c",
+  "habits_facade.py": "cc5fe5890fad2054086d6890c67defa6b79618fe09130135da76417ccaa8ad59",
+  "requirements.txt": "295451f781315bdee82cfd78d710270b81ae64de88258bf61f4245a49f58d5bc",
+  "knowledge/__init__.py": "b45b4322064222cf77fc16cbf388da26b7ad797fa947f448e46bae64b844eb60",
+  "knowledge/registry.py": "2e3125d32988a320d8a6a329f3db7d3376808210ce45eac931a31e770ed529f7",
+  "knowledge/packs.json": "85255e1bfbc6b678060da9e7d1dbfedc7856ca7a0134a4bf3e48beca65249e9c",
+  "knowledge/test_knowledge.py": "59f80075f5da8c357664f7ba7de8c9ddd46668262bff7aa7b2b2ef6d07ea0a48"
+ }
+}

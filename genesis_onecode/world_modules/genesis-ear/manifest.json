@@ -1,0 +1,24 @@
+{
+ "name": "genesis-ear",
+ "version": "1.0.0",
+ "description": "Live Persian speech recognition for GENESIS (faster-whisper small, int8, CPU).",
+ "entry": "ear_listener.py",
+ "factory": "EarListener",
+ "min_core_version": "3.0.0",
+ "files": [
+  "ear_listener.py",
+  "README.md",
+  "knowledge/__init__.py",
+  "knowledge/registry.py",
+  "knowledge/packs.json",
+  "knowledge/test_knowledge.py"
+ ],
+ "sha256": {
+  "ear_listener.py": "499f76ef4476f2e36353322b53bdeb36ed875647ea4da56785396d903599af56",
+  "README.md": "1c4bccb6b8d893bc9874027910152d72f772ad3343c5940ef3950eaa6b3e0bef",
+  "knowledge/__init__.py": "f28ac814e3662fbbe1ca5dfa636a374d129ee6f2d29cdd22c42fdbce98d3bbb4",
+  "knowledge/registry.py": "067b738645d2524b4a99d0fb8b01a7a3d3effc488bc84475b01a09c17bc6d3ae",
+  "knowledge/packs.json": "85255e1bfbc6b678060da9e7d1dbfedc7856ca7a0134a4bf3e48beca65249e9c",
+  "knowledge/test_knowledge.py": "6093a6246a0234a8bffec2a477b2b288bb6d442aebee996ea3f92b8c7bdf47af"
+ }
+}

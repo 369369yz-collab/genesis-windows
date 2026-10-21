@@ -1,0 +1,3 @@
+# Runtime dependencies: stdlib only (sqlite3, json, uuid).
+# Test dependencies (dev only, not shipped in the installer):
+#   pytest

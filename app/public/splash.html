@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!-- GENESIS — boot splash (Tauri "splashscreen" window).
+     Artwork: YZ's final GENESIS poster ("SHE IS AWAKE") — the master file
+     lives at public/boot-splash.jpg (1080x1920). This page shows it
+     full-bleed from the first frame, mirrors the REAL brain boot state
+     (brain_status, same source as the main window's boot bar), and hands
+     over to the main window the moment the brain is actually ready.
+     No fake progress: every percent shown comes from brain_status. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GENESIS</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#04060c;
+    font-family:"Segoe UI", system-ui, sans-serif; -webkit-user-select:none; user-select:none; }
+  #poster { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+  /* Fallback composition — only visible if boot-splash.jpg is absent.
+     The poster covers it completely when present. */
+  #fallback { position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:flex-end; padding-bottom:118px;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #16233f 0%, #0a1122 45%, #04060c 100%); }
+  #fallback .masthead { color:#e8edf7; font-weight:600; letter-spacing:.42em;
+    font-size:34px; text-indent:.42em; }
+  #fallback .tagline { color:#8fa3c8; letter-spacing:.34em; font-size:10px;
+    margin-top:12px; text-indent:.34em; text-align:center; line-height:2; }
+  #fallback .rule { width:54px; height:1px; background:#3d5a8f; margin-top:16px; }
+  /* Boot status overlay */
+  #hud { position:fixed; left:0; right:0; bottom:0; padding:18px 22px 20px;
+    background:linear-gradient(to top, rgba(2,4,9,.88) 0%, rgba(2,4,9,.45) 62%, transparent 100%);
+    color:#dbe6ff; transition:opacity .45s ease; }
+  #hudRow { display:flex; align-items:baseline; justify-content:space-between; }
+  #status { font-size:11px; letter-spacing:.30em; font-weight:600; }
+  #pct { font-size:11px; letter-spacing:.14em; color:#9db9ec; font-variant-numeric:tabular-nums; }
+  #track { margin-top:10px; height:2px; background:rgba(140,170,230,.22); border-radius:999px; overflow:hidden; }
+  #fill { height:100%; width:0%; background:linear-gradient(90deg,#4f7ddf,#9db9ec);
+    border-radius:999px; transition:width .5s ease; }
+  #fill.indet { width:38% !important; animation:slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0%{margin-left:0} 50%{margin-left:62%} 100%{margin-left:0} }
+  body.done #hud { opacity:0; }
+  body.done #poster, body.done #fallback { transition:opacity .45s ease; opacity:0; }
+</style>
+</head>
+<body data-tauri-drag-region>
+  <div id="fallback">
+    <div class="masthead">GENESIS</div>
+    <div class="rule"></div>
+    <div class="tagline">SHE IS AWAKE<br>IDENTITY VERIFIED</div>
+  </div>
+  <img id="poster" src="boot-splash.jpg" alt="GENESIS"
+       onerror="this.style.display='none'">
+  <div id="hud">
+    <div id="hudRow"><span id="status">GENESIS IS WAKING UP</span><span id="pct"></span></div>
+    <div id="track"><div id="fill" class="indet"></div></div>
+  </div>
+
+<script>
+(function () {
+  var statusEl = document.getElementById('status'),
+      pctEl = document.getElementById('pct'),
+      fillEl = document.getElementById('fill'),
+      startedAt = Date.now(),
+      MIN_SHOW_MS = 2600,
+      finished = false;
+
+  var LABELS = {
+    downloading: 'DOWNLOADING NEURAL CORE',
+    assembling:  'ASSEMBLING NEURAL CORE',
+    verifying:   'VERIFYING INTEGRITY'
+  };
+
+  function T() { return (window.__TAURI__ || {}); }
+  function invoke(cmd) {
+    var core = T().core;
+    if (!core || !core.invoke) return Promise.reject(new Error('no-tauri'));
+    return core.invoke(cmd);
+  }
+
+  function handover() {
+    if (finished) return;
+    finished = true;
+    statusEl.textContent = 'SHE IS AWAKE';
+    pctEl.textContent = '';
+    fillEl.classList.remove('indet');
+    fillEl.style.width = '100%';
+    var wait = Math.max(0, MIN_SHOW_MS - (Date.now() - startedAt));
+    setTimeout(function () {
+      document.body.classList.add('done');
+      setTimeout(async function () {
+        try {
+          var ww = T().webviewWindow;
+          var main = await ww.WebviewWindow.getByLabel('main');
+          if (main) { await main.show(); await main.setFocus(); }
+          await ww.getCurrentWebviewWindow().close();
+        } catch (e) {
+          /* Rust fail-safe (main.rs) reveals the main window regardless. */
+        }
+      }, 480);
+    }, wait);
+  }
+
+  async function tick() {
+    if (finished) return;
+    try {
+      var st = await invoke('brain_status');
+      var state = st.model_state || 'idle';
+      if (state === 'error') {
+        statusEl.textContent = 'BOOT FAULT — OPENING GENESIS';
+        fillEl.classList.remove('indet');
+        fillEl.style.width = '0%';
+        setTimeout(handover, 1600); /* main window shows the full error */
+        return;
+      }
+      if (state === 'ready' && st.brain_running) { handover(); return; }
+      if (state === 'ready') {
+        statusEl.textContent = 'AWAKENING';
+        fillEl.classList.remove('indet');
+        fillEl.style.width = '100%';
+      } else if (LABELS[state]) {
+        var total = st.model_total_bytes || 0, got = st.model_downloaded_bytes || 0;
+        var p = total > 0 ? Math.floor((got / total) * 100) : 0;
+        statusEl.textContent = LABELS[state];
+        fillEl.classList.remove('indet');
+        fillEl.style.width = p + '%';
+        pctEl.textContent = p + '%';
+      } else {
+        statusEl.textContent = 'GENESIS IS WAKING UP';
+        fillEl.classList.add('indet');
+      }
+    } catch (e) { /* backend not reachable yet — keep waiting */ }
+    setTimeout(tick, 800);
+  }
+  tick();
+})();
+</script>
+</body>
+</html>

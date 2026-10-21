@@ -17,6 +17,20 @@
         "skipTaskbar": false,
         "title": "GENESIS",
         "transparent": true,
+        "visible": false,
+        "width": 480
+      },
+      {
+        "alwaysOnTop": true,
+        "center": true,
+        "decorations": false,
+        "height": 853,
+        "label": "splashscreen",
+        "resizable": false,
+        "skipTaskbar": true,
+        "title": "GENESIS",
+        "transparent": false,
+        "url": "splash.html",
         "width": 480
       }
     ]

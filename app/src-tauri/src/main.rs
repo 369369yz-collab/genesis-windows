@@ -112,6 +112,24 @@ fn main() {
                 // Drop kills llama-server + brain service at app teardown.
             });
 
+            // --- Boot splash fail-safe: the splash window dismisses itself
+            // when brain_status reports ready (public/splash.html). If that
+            // handover ever fails, the app must STILL appear — a hidden main
+            // window is the first-boot defect class, never again.
+            let splash_guard = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(120));
+                if let Some(splash) = splash_guard.get_webview_window("splashscreen") {
+                    let _ = splash.close();
+                }
+                if let Some(main) = splash_guard.get_webview_window("main") {
+                    if !main.is_visible().unwrap_or(true) {
+                        let _ = main.show();
+                        let _ = main.set_focus();
+                    }
+                }
+            });
+
             // --- Voice sidecar supervisor (whisper/Piper): the voice builder
             // registers its backends here; the reaper unloads 60 s-idle ones.
             let supervisor = Arc::new(Mutex::new(SidecarSupervisor::new()));

@@ -36,10 +36,11 @@ on:
         description: "inno | sfx"
         required: false
         default: ""
-  push:
-    branches: [complete-1.0.0]
-    paths:
-      - '.github/workflows/complete-verify.yml'
+  # NOTE: no push trigger — this workflow needs setup coordinates
+  # (dispatch inputs or COMPLETE_SETUP_* repo vars). A push-triggered run
+  # without coordinates can never do real work, so it used to fail RED at
+  # V0 (runs 39642486061/39642485927-class noise). Dispatch explicitly once
+  # the final setup exists (genesis-build-watch 2026-10-21).
 
 permissions:
   contents: read

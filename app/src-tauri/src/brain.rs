@@ -7,11 +7,15 @@
 //!   resources/brain/genesis_onecode/    (the brain; incl. model_manifest.json)
 //!   resources/chromium/chrome.exe       (portable Chromium for the governor)
 //!
-//! The 5GB model is NOT in the installer (makensis is 32-bit and cannot
-//! build it). On first boot the launcher downloads the pinned release
-//! parts into the app-local data dir, verifies every part's SHA-256,
-//! assembles, and re-verifies the full pinned SHA-256 (W14). After that
-//! the model is local and the app is fully standalone.
+//! The 5GB model cannot ride inside the Tauri/NSIS installer (makensis
+//! is 32-bit and cannot build a >4 GB package), so the FULL setup wraps
+//! this installer and pre-places the assembled GGUF into the app-local
+//! data dir's models/ folder BEFORE first launch (installer/full/).
+//! ensure_model() then verifies the pinned SHA-256 (W14) and boots with
+//! ZERO downloads. The release-parts download below remains only as a
+//! fallback for bare NSIS installs — and now streams visible progress
+//! (2026-10-21: the silent, percent-less download YZ hit is a defect,
+//! never to recur; see sha256_file_cb / download_part progress notes).
 //!
 //! Boot order: payloads present -> model ensure (download/verify) ->
 //! llama-server (GPU offload) -> wait /health -> brain service (17369).
@@ -124,12 +128,22 @@ impl BrainLauncher {
 
     /// Chunked SHA-256 of a file.
     fn sha256_file(path: &Path) -> Result<String, String> {
+        Self::sha256_file_cb(path, &mut |_| {})
+    }
+
+    /// Chunked SHA-256; `cb` receives cumulative bytes hashed so callers
+    /// can surface HONEST progress for multi-GB files. (2026-10-21, YZ:
+    /// the 5.85 GB model downloaded/verified with zero visible progress —
+    /// the counter only ever moved per completed part and the UI showed
+    /// nothing at all. Progress must be visible while it happens.)
+    fn sha256_file_cb(path: &Path, cb: &mut dyn FnMut(u64)) -> Result<String, String> {
         let mut file =
             std::fs::File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
         let mut hasher = Sha256::new();
         // HEAP buffer, not stack: this runs on a spawned thread with a 2 MiB
         // stack; an 8 MiB stack array = instant 0xC00000FD (2026-10-15).
         let mut buf = vec![0u8; 8 * 1024 * 1024];
+        let mut hashed: u64 = 0;
         loop {
             let n = file
                 .read(&mut buf)
@@ -138,6 +152,8 @@ impl BrainLauncher {
                 break;
             }
             hasher.update(&buf[..n]);
+            hashed += n as u64;
+            cb(hashed);
         }
         Ok(hex::encode(hasher.finalize()))
     }
@@ -153,8 +169,41 @@ impl BrainLauncher {
         Ok(())
     }
 
+    /// W14 verify WITH progress: hashing 5.85 GB takes real seconds, and
+    /// the UI must be able to show the counter moving while it happens
+    /// (2026-10-21 fix — see sha256_file_cb). Reports into model_state as
+    /// ("verifying", bytes_hashed, total_bytes), throttled to ~64 MB steps.
+    fn verify_model_progress(&self, path: &Path, total: u64) -> Result<(), String> {
+        self.set_model_state("verifying", 0, total);
+        let mut last = 0u64;
+        let hex = Self::sha256_file_cb(path, &mut |done| {
+            if done - last >= 64 * 1024 * 1024 || done == total {
+                last = done;
+                self.set_model_state("verifying", done, total);
+            }
+        })?;
+        if hex != MODEL_SHA256 {
+            return Err(format!(
+                "model SHA-256 MISMATCH — refusing to load (expected {MODEL_SHA256}, got {hex})"
+            ));
+        }
+        Ok(())
+    }
+
     /// Download one release part (streamed to disk), verifying its hash.
-    fn download_part(&self, url: &str, dest: &Path, expected_sha: &str, expected_size: u64) -> Result<(), String> {
+    /// `progress_base`/`progress_total` let the stream report into
+    /// model_state CONTINUOUSLY (bytes actually written), not just when a
+    /// whole ~512 MB part lands — the invisible-progress defect YZ hit on
+    /// 2026-10-21 (download felt frozen, then "cut", with no % anywhere).
+    fn download_part(
+        &self,
+        url: &str,
+        dest: &Path,
+        expected_sha: &str,
+        expected_size: u64,
+        progress_base: u64,
+        progress_total: u64,
+    ) -> Result<(), String> {
         if dest.exists() {
             let size = dest.metadata().map(|m| m.len()).unwrap_or(0);
             if size == expected_size {
@@ -176,11 +225,34 @@ impl BrainLauncher {
         if resp.status() != 200 {
             return Err(format!("download {url}: HTTP {}", resp.status()));
         }
+        use std::io::Write as _;
         let mut reader = resp.into_reader();
         let mut out = std::fs::File::create(dest)
             .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
-        std::io::copy(&mut reader, &mut out)
-            .map_err(|e| format!("write failed {}: {e}", dest.display()))?;
+        // Manual stream loop (not io::copy) so model_state tracks the
+        // bytes as they land — throttled to ~16 MB steps.
+        let mut buf = vec![0u8; 1024 * 1024];
+        let mut written: u64 = 0;
+        let mut last_report: u64 = 0;
+        loop {
+            let n = reader
+                .read(&mut buf)
+                .map_err(|e| format!("download read failed for {url}: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            out.write_all(&buf[..n])
+                .map_err(|e| format!("write failed {}: {e}", dest.display()))?;
+            written += n as u64;
+            if written - last_report >= 16 * 1024 * 1024 {
+                last_report = written;
+                self.set_model_state(
+                    "downloading",
+                    progress_base + written,
+                    progress_total,
+                );
+            }
+        }
         drop(out);
         let actual = Self::sha256_file(dest)?;
         if actual != expected_sha {
@@ -206,8 +278,7 @@ impl BrainLauncher {
         let dest = models_dir.join(name);
 
         if dest.exists() {
-            self.set_model_state("verifying", 0, total);
-            Self::verify_model(&dest)?;
+            self.verify_model_progress(&dest, total)?;
             self.set_model_state("ready", total, total);
             self.status.lock().unwrap().model_verified = true;
             eprintln!("[brain] local model verified: {}", dest.display());
@@ -232,7 +303,7 @@ impl BrainLauncher {
             let psize = p["size"].as_u64().unwrap_or(0);
             let part_path = models_dir.join(pname);
             self.blog(&format!("part {}/{} start: {pname} ({} bytes)", i + 1, n_parts, psize));
-            if let Err(e) = self.download_part(purl, &part_path, psha, psize) {
+            if let Err(e) = self.download_part(purl, &part_path, psha, psize, downloaded, total) {
                 self.blog(&format!("part {}/{} FAILED: {pname}: {e}", i + 1, n_parts));
                 return Err(format!("{pname}: {e}"));
             }
@@ -256,8 +327,14 @@ impl BrainLauncher {
                 .map_err(|e| format!("assemble copy failed: {e}"))?;
         }
         drop(out);
-        self.set_model_state("verifying", downloaded, total);
-        let hex = Self::sha256_file(&tmp)?;
+        self.set_model_state("verifying", 0, total);
+        let mut last_v = 0u64;
+        let hex = Self::sha256_file_cb(&tmp, &mut |done| {
+            if done - last_v >= 64 * 1024 * 1024 || done == total {
+                last_v = done;
+                self.set_model_state("verifying", done, total);
+            }
+        })?;
         if hex != MODEL_SHA256 {
             let _ = std::fs::remove_file(&tmp);
             return Err(format!(

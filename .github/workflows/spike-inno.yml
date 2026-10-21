@@ -5,6 +5,12 @@ name: SPIKE — Inno Setup single-exe wrapping slim install + model
 # setup .exe > 4 GB that clean-installs the app WITH the embedded model
 # and uninstalls clean? Evidence only — nothing here ships.
 #
+# EVIDENCE 2026-10-21 (run 39647312628): Inno Setup 6 single-volume limit is
+# 2 GB ("Disk spanning must be enabled to create an installation larger than
+# 42000000"). The Compression=none payload (slim app + Q5_K_M gguf) exceeded
+# it. DiskSpanning=yes is now set so the spike proceeds; the spanning artifacts
+# themselves record the evidence: ONE single exe is NOT achievable at this size.
+#
 # Route: silent-install the green slim NSIS artifact from build-windows,
 # package that installed tree + the assembled GGUF (to {app}\resources\model,
 # where brain.rs looks for the bundled model) into a single Inno setup.
@@ -101,6 +107,7 @@ jobs:
           OutputBaseFilename=GENESIS-Complete-1.0.0-spike-setup
           Compression=none
           SolidCompression=no
+          DiskSpanning=yes
           DisableProgramGroupPage=yes
           UninstallDisplayName=GENESIS Complete 1.0.0
           ArchitecturesAllowed=x64compatible

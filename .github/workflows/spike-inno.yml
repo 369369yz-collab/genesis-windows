@@ -46,9 +46,17 @@ jobs:
         run: |
           $runId = "${{ inputs.build_run_id }}"
           if (-not $runId) {
-            $runId = gh api "repos/${{ github.repository }}/actions/workflows/build-windows.yml/runs?branch=complete-1.0.0&status=success&per_page=1" --jq '.workflow_runs[0].id'
+            # WAIT (not fail) for a green build-windows run: self-triggered spikes
+            # race the build they consume (run 39641131096 failed exactly this way).
+            $deadline = (Get-Date).AddMinutes(85)
+            while (-not $runId) {
+              $runId = gh api "repos/${{ github.repository }}/actions/workflows/build-windows.yml/runs?branch=complete-1.0.0&status=success&per_page=1" --jq '.workflow_runs[0].id'
+              if ($runId) { break }
+              if ((Get-Date) -gt $deadline) { Write-Error "SPIKE-RED: no successful build-windows run on complete-1.0.0 within 85 min (build still running?)"; exit 1 }
+              Write-Host "no successful build-windows run yet; waiting 120s ..."
+              Start-Sleep -Seconds 120
+            }
           }
-          if (-not $runId) { Write-Error "SPIKE-RED: no successful build-windows run"; exit 1 }
           Write-Host "slim build run: $runId"
           gh run download $runId --name GENESIS-Setup-Full-windows --dir slim_dl
           if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: artifact download failed"; exit 1 }

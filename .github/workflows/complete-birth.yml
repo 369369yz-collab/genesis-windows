@@ -1,0 +1,198 @@
+name: GENESIS COMPLETE — birth test (30-60 min, guardian evidence e)
+
+# The BIRTH TEST for the final GENESIS COMPLETE 1.0.0 file: install the
+# exact distribution bytes on clean windows-latest, launch, and exercise
+# every feature in repeated cycles for a REAL 30-60 minute wall-clock run
+# (birth-drive.js timestamps every action into birth_log.jsonl; this
+# workflow asserts the first->last span >= 30 min — a ~5 min run does NOT
+# satisfy the gate). Ends with the real close control + OS process check.
+# Coordinates: dispatch inputs or repo variables COMPLETE_SETUP_* .
+
+on:
+  workflow_dispatch:
+    inputs:
+      setup_url:
+        required: false
+        default: ""
+      setup_sha256:
+        required: false
+        default: ""
+      setup_size:
+        required: false
+        default: ""
+      installer_kind:
+        required: false
+        default: ""
+      target_min:
+        description: "Exercise duration target in minutes (30-60)"
+        required: false
+        default: "35"
+  push:
+    branches: [complete-1.0.0]
+    paths:
+      - '.github/workflows/complete-birth.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  birth:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      MODEL_SHA_PIN: 1A762D6D2C9CD7C34D2497DAD1CBB67B4F77F43DCCB8CD1EFE7F925B9A7E4371
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: B0 resolve setup coordinates (fail-closed)
+        run: |
+          $url = "${{ inputs.setup_url }}"; if (-not $url) { $url = "${{ vars.COMPLETE_SETUP_URL }}" }
+          $sha = "${{ inputs.setup_sha256 }}"; if (-not $sha) { $sha = "${{ vars.COMPLETE_SETUP_SHA256 }}" }
+          $size = "${{ inputs.setup_size }}"; if (-not $size) { $size = "${{ vars.COMPLETE_SETUP_SIZE }}" }
+          $kind = "${{ inputs.installer_kind }}"; if (-not $kind) { $kind = "${{ vars.COMPLETE_SETUP_KIND }}" }
+          if (-not $url -or -not $sha -or -not $size -or -not $kind) {
+            Write-Error "BIRTH-RED: setup coordinates incomplete"; exit 1
+          }
+          "SETUP_URL=$url" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "kind=$kind size=$size sha=$sha"
+
+      - name: B1 download final setup + verify bytes (fail-closed)
+        run: |
+          $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
+          curl.exe -L --fail --retry 3 -o $dst $env:SETUP_URL
+          if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: download failed"; exit 1 }
+          $f = Get-Item $dst
+          $h = (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower()
+          Write-Host "downloaded: $($f.Length) bytes sha256=$h"
+          if ($f.Length -ne [int64]$env:SETUP_SIZE) { Write-Error "BIRTH-RED: size mismatch"; exit 1 }
+          if ($h -ne $env:SETUP_SHA) { Write-Error "BIRTH-RED: sha256 mismatch"; exit 1 }
+          "SETUP_EXE=$dst" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "B1 PASS"
+
+      - name: B2 install final setup + locate app + verify embedded model
+        run: |
+          if ($env:SETUP_KIND -eq "inno") {
+            $dest = "C:\genesis-complete"
+            $p = Start-Process $env:SETUP_EXE -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dest" -PassThru -Wait
+            if ($p.ExitCode -ne 0) { Write-Error "BIRTH-RED: Inno install failed ($($p.ExitCode))"; exit 1 }
+            $model = Join-Path $dest "resources\model\genesis_369_v1_Q5_K_M.gguf"
+            if (-not (Test-Path $model)) { Write-Error "BIRTH-RED: embedded model missing"; exit 1 }
+            if ((Get-FileHash $model -Algorithm SHA256).Hash -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
+            "INSTALL_DIR=$dest" | Out-File $env:GITHUB_ENV -Append
+            $exe = Get-ChildItem $dest -File -Filter "*.exe" | Where-Object { $_.Name -notmatch "(?i)unins" } | Select-Object -First 1
+          } else {
+            $p = Start-Process $env:SETUP_EXE -PassThru
+            $modelDest = Join-Path $env:LOCALAPPDATA "com.genesis.final\models\genesis_369_v1_Q5_K_M.gguf"
+            $ok = $false
+            for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+              Start-Sleep -Seconds 10
+              if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
+            }
+            if (-not $ok) { Write-Error "BIRTH-RED: SFX did not pre-place model in 600s"; exit 1 }
+            if ((Get-FileHash $modelDest -Algorithm SHA256).Hash -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
+            Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+            $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+            $entry = $null
+            foreach ($hv in $hives) {
+              $entry = Get-ChildItem $hv -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Write-Error "BIRTH-RED: no GENESIS uninstall entry (sfx)"; exit 1 }
+            $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+            "INSTALL_DIR=$dir" | Out-File $env:GITHUB_ENV -Append
+            $exe = Get-ChildItem $dir -File -Filter "*.exe" | Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } | Select-Object -First 1
+          }
+          if (-not $exe) { Write-Error "BIRTH-RED: main exe not found"; exit 1 }
+          "MAIN_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "B2 PASS: installed; main exe $($exe.FullName)"
+
+      - name: B3 driver deps
+        run: |
+          $w = "$env:RUNNER_TEMP\genesis_birth"; New-Item -ItemType Directory -Force $w | Out-Null
+          "BIRTH_WORK=$w" | Out-File $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Force "$w\shots" | Out-Null
+          Set-Location $w
+          npm init -y | Out-Null
+          npm install playwright-core sharp --no-audit --no-fund
+          Write-Host "B3 PASS"
+
+      - name: B4 launch app with CDP
+        run: |
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $env:GENESIS_N_GPU_LAYERS = "0"
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "APP_PID=$($app.Id)" | Out-File $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "BIRTH-RED: app exited before webview"; exit 1 }
+          if (-not $ok) { Write-Error "BIRTH-RED: CDP never answered in 180s"; exit 1 }
+          Write-Host "B4 PASS: webview rendered"
+
+      - name: B5 birth drive (30-60 min of feature exercise)
+        env:
+          HF_OUT: ${{ env.BIRTH_WORK }}\shots
+          BIRTH_TARGET_MIN: ${{ inputs.target_min }}
+        run: |
+          Set-Location $env:BIRTH_WORK
+          Copy-Item "$env:GITHUB_WORKSPACE\.github\workflows\birth-drive.js" . -Force
+          node birth-drive.js
+          if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: birth drive failed"; exit 1 }
+          Write-Host "B5 PASS: birth drive green"
+
+      - name: B6 duration gate — first->last timestamp span >= 30 min
+        run: |
+          $log = Get-Content "$env:BIRTH_WORK\shots\birth_log.jsonl" | ForEach-Object { $_ | ConvertFrom-Json }
+          if ($log.Count -lt 10) { Write-Error "BIRTH-RED: too few birth log records ($($log.Count))"; exit 1 }
+          $first = [datetime]$log[0].ts_utc; $last = [datetime]$log[-1].ts_utc
+          $span = ($last - $first).TotalMinutes
+          Write-Host "birth span: $([math]::Round($span,1)) min across $($log.Count) timestamped actions"
+          if ($span -lt 30) { Write-Error "BIRTH-RED: span $span min < 30 — not a birth test"; exit 1 }
+          Write-Host "B6 PASS: real 30+ min exercise run"
+
+      - name: B7 CLOSE proof — app process gone at OS level
+        run: |
+          Start-Sleep -Seconds 5
+          $procs = Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue
+          $gone = ($null -eq $procs)
+          [ordered]@{ checked_at = (Get-Date).ToUniversalTime().ToString("o"); app_process_gone = $gone } |
+            ConvertTo-Json | Set-Content "$env:BIRTH_WORK\shots\close_proof.json"
+          if (-not $gone) { Write-Error "BIRTH-RED: app still running after close click"; exit 1 }
+          Write-Host "B7 PASS: close exits the process"
+
+      - name: B8 cleanup + forensics + evidence upload
+        if: always()
+        run: |
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
+          Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          foreach ($f in @("boot.log", "llama-server.err.log")) {
+            $src = Join-Path $dataDir $f
+            if (Test-Path $src) { Copy-Item $src "$env:BIRTH_WORK\shots\$f" -Force }
+          }
+
+      - name: Upload birth evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-complete-birth-evidence
+          path: ${{ env.BIRTH_WORK }}\shots\

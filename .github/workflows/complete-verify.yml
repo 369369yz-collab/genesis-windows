@@ -1,0 +1,265 @@
+name: GENESIS COMPLETE — verification (guardian evidence)
+
+# Verifies the FINAL GENESIS COMPLETE 1.0.0 single-file setup (the exact
+# bytes users download) on clean windows-latest and produces the guardian
+# seal evidence:
+#   (a) CLOSE proof  — complete-drive.js clicks the x control; a later
+#       step asserts at OS level that the app process is GONE.
+#   (b) DRAG proof   — window bounds before vs after a topbar drag
+#       (complete_proofs.json in the evidence artifact).
+#   (c) PROGRESS proof — 00-boot-progress.png shows the boot bar with a
+#       visible % while the embedded 5.85 GB model verifies.
+#   (d) CONNECTED proof — ci_bridge_session.py: production bridge /health
+#       handshake + live heartbeat/push/pull session (production code).
+#   (f) REAL model reply — human-flow checks inherited verbatim; the stub
+#       string appearing anywhere is FAIL; 06-chat-reply.png is evidence.
+# Coordinates of the final file come from workflow_dispatch inputs or
+# repository variables COMPLETE_SETUP_URL / _SHA256 / _SIZE / _KIND
+# (set when the file is hosted). Fail-closed everywhere.
+
+on:
+  workflow_dispatch:
+    inputs:
+      setup_url:
+        description: "Direct download URL of the final complete setup"
+        required: false
+        default: ""
+      setup_sha256:
+        description: "Expected SHA-256 of the final setup (lowercase)"
+        required: false
+        default: ""
+      setup_size:
+        description: "Expected size in bytes of the final setup"
+        required: false
+        default: ""
+      installer_kind:
+        description: "inno | sfx"
+        required: false
+        default: ""
+  push:
+    branches: [complete-1.0.0]
+    paths:
+      - '.github/workflows/complete-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      MODEL_SHA_PIN: 1A762D6D2C9CD7C34D2497DAD1CBB67B4F77F43DCCB8CD1EFE7F925B9A7E4371
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: V0 resolve setup coordinates (fail-closed)
+        id: coords
+        run: |
+          $url = "${{ inputs.setup_url }}"; if (-not $url) { $url = "${{ vars.COMPLETE_SETUP_URL }}" }
+          $sha = "${{ inputs.setup_sha256 }}"; if (-not $sha) { $sha = "${{ vars.COMPLETE_SETUP_SHA256 }}" }
+          $size = "${{ inputs.setup_size }}"; if (-not $size) { $size = "${{ vars.COMPLETE_SETUP_SIZE }}" }
+          $kind = "${{ inputs.installer_kind }}"; if (-not $kind) { $kind = "${{ vars.COMPLETE_SETUP_KIND }}" }
+          if (-not $url -or -not $sha -or -not $size -or -not $kind) {
+            Write-Error "VERIFY-RED: setup coordinates incomplete (url/sha/size/kind) — set dispatch inputs or repo variables"; exit 1
+          }
+          "SETUP_URL=$url"   | Out-File $env:GITHUB_ENV -Append
+          "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "kind=$kind size=$size sha=$sha"
+          Write-Host "url host: $(([uri]$url).Host)"
+
+      - name: V1 download final setup + verify bytes (fail-closed)
+        run: |
+          $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
+          curl.exe -L --fail --retry 3 -o $dst $env:SETUP_URL
+          if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: setup download failed"; exit 1 }
+          $f = Get-Item $dst
+          $h = (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower()
+          Write-Host "downloaded: $($f.Length) bytes sha256=$h"
+          if ($f.Length -ne [int64]$env:SETUP_SIZE) { Write-Error "VERIFY-RED: size mismatch ($($f.Length) != $env:SETUP_SIZE)"; exit 1 }
+          if ($h -ne $env:SETUP_SHA) { Write-Error "VERIFY-RED: sha256 mismatch"; exit 1 }
+          "SETUP_EXE=$dst" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "V1 PASS: final setup bytes verified"
+
+      - name: V2 connected-operation proof (bridge handshake + live session)
+        run: |
+          python installer/ci_bridge_session.py "$env:RUNNER_TEMP\bridge_session.json"
+          if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: bridge session proof failed"; exit 1 }
+          Write-Host "V2 PASS: production /health 200 + heartbeat/push/pull round-trip"
+
+      - name: V3 install final setup (silent) + locate app + verify embedded model
+        run: |
+          if ($env:SETUP_KIND -eq "inno") {
+            $dest = "C:\genesis-complete"
+            $p = Start-Process $env:SETUP_EXE -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dest" -PassThru -Wait
+            Write-Host "inno install exit: $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { Write-Error "VERIFY-RED: Inno install failed"; exit 1 }
+            $model = Join-Path $dest "resources\model\genesis_369_v1_Q5_K_M.gguf"
+            if (-not (Test-Path $model)) { Write-Error "VERIFY-RED: embedded model missing at $model"; exit 1 }
+            $mh = (Get-FileHash $model -Algorithm SHA256).Hash
+            Write-Host "embedded model sha256: $mh"
+            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: embedded model hash != pin"; exit 1 }
+            "INSTALL_DIR=$dest" | Out-File $env:GITHUB_ENV -Append
+            Write-Host "V3 PASS (inno): installed with embedded model, hash = pin"
+          } else {
+            # SFX route: the file self-extracts; full-launcher installs the
+            # app (inner NSIS), pre-places the model into the data dir and
+            # launches the app. Wait for install to settle, then stop the
+            # auto-launched app (the drive relaunches it under CDP).
+            $p = Start-Process $env:SETUP_EXE -PassThru
+            Write-Host "sfx pid: $($p.Id)"
+            $modelDest = Join-Path $env:LOCALAPPDATA "com.genesis.final\models\genesis_369_v1_Q5_K_M.gguf"
+            $ok = $false
+            for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+              Start-Sleep -Seconds 10
+              if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
+            }
+            if (-not $ok) { Write-Error "VERIFY-RED: SFX did not pre-place the model in 600s"; exit 1 }
+            $mh = (Get-FileHash $modelDest -Algorithm SHA256).Hash
+            Write-Host "pre-placed model sha256: $mh"
+            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: pre-placed model hash != pin"; exit 1 }
+            Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            foreach ($n in @("llama-server-vulkan","llama-server-cpu")) {
+              Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 3
+            Write-Host "V3 PASS (sfx): model pre-placed, hash = pin; auto-launched app stopped for CDP relaunch"
+          }
+
+      - name: V4 locate installed app exe (registry)
+        run: |
+          if ($env:SETUP_KIND -eq "inno") {
+            $exe = Get-ChildItem $env:INSTALL_DIR -File -Filter "*.exe" |
+              Where-Object { $_.Name -notmatch "(?i)unins" } | Select-Object -First 1
+          } else {
+            $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+            $entry = $null
+            foreach ($h in $hives) {
+              $entry = Get-ChildItem $h -ErrorAction SilentlyContinue |
+                Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Write-Error "VERIFY-RED: no GENESIS uninstall entry (sfx route)"; exit 1 }
+            $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+            "INSTALL_DIR=$dir" | Out-File $env:GITHUB_ENV -Append
+            $exe = Get-ChildItem $dir -File -Filter "*.exe" |
+              Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } |
+              Select-Object -First 1
+          }
+          if (-not $exe) { Write-Error "VERIFY-RED: main exe not found"; exit 1 }
+          Write-Host "main exe: $($exe.FullName)"
+          "MAIN_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: V5 install driver deps (playwright-core + sharp)
+        run: |
+          $w = "$env:RUNNER_TEMP\genesis_verify"; New-Item -ItemType Directory -Force $w | Out-Null
+          "VF_WORK=$w" | Out-File $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Force "$w\shots" | Out-Null
+          Set-Location $w
+          npm init -y | Out-Null
+          npm install playwright-core sharp --no-audit --no-fund
+          Write-Host "V5 PASS: driver deps installed"
+
+      - name: V6 launch app with CDP + wait for webview render
+        run: |
+          $polPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+          New-Item -Path $polPath -Force | Out-Null
+          New-ItemProperty -Path $polPath -Name "genesis-final.exe" -Value "--remote-debugging-port=9222" -PropertyType String -Force | Out-Null
+          $env:GENESIS_N_GPU_LAYERS = "0"
+          $app = Start-Process $env:MAIN_EXE -PassThru
+          "APP_PID=$($app.Id)" | Out-File $env:GITHUB_ENV -Append
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            if ($app.HasExited) { break }
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:9222/json/version" -TimeoutSec 3 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true }
+            } catch {}
+            if (-not $ok) { Start-Sleep -Seconds 2 }
+          }
+          if ($app.HasExited) { Write-Error "VERIFY-RED: app exited before webview (exit $($app.ExitCode))"; exit 1 }
+          if (-not $ok) { Write-Error "VERIFY-RED: CDP never answered in 180s"; exit 1 }
+          Write-Host "V6 PASS: webview rendered, CDP reachable"
+
+      - name: V7 drive the app (progress + drag + buttons + chat + CLOSE click)
+        env:
+          HF_OUT: ${{ env.VF_WORK }}\shots
+        run: |
+          Set-Location $env:VF_WORK
+          Copy-Item "$env:GITHUB_WORKSPACE\.github\workflows\complete-drive.js" . -Force
+          node complete-drive.js
+          if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: drive failed"; exit 1 }
+          $v = Get-Content "$env:VF_WORK\shots\verdict.json" -Raw | ConvertFrom-Json
+          if (-not $v.pass) { Write-Error "VERIFY-RED: verdict pass=false"; exit 1 }
+          Write-Host "V7 PASS: drive green (incl. real model reply, drag proof, close clicked)"
+
+      - name: V8 CLOSE proof — app process must be GONE at OS level
+        run: |
+          Start-Sleep -Seconds 5
+          $procs = Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue
+          $gone = ($null -eq $procs)
+          $llama = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" }
+          $proof = [ordered]@{
+            checked_at = (Get-Date).ToUniversalTime().ToString("o")
+            app_process_gone = $gone
+            llama_processes_remaining = @($llama).Count
+          }
+          $proof | ConvertTo-Json | Set-Content "$env:VF_WORK\shots\close_proof.json"
+          $proof | Format-List | Out-String | Write-Host
+          if (-not $gone) { Write-Error "VERIFY-RED: app process STILL RUNNING after close click — close defect not fixed"; exit 1 }
+          Write-Host "V8 PASS: close exits the process"
+
+      - name: V9 uninstall + leftover scan (install dir AND data dir)
+        if: always()
+        run: |
+          Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
+          Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
+          $dir = $env:INSTALL_DIR
+          if ($dir -and (Test-Path $dir)) {
+            $unins = Get-ChildItem $dir -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $unins) { $unins = Get-ChildItem $dir -Filter "*ninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+            if ($unins) {
+              $p = Start-Process $unins.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/S" -PassThru -Wait
+              Write-Host "uninstaller exit: $($p.ExitCode)"
+              Start-Sleep -Seconds 8
+            } else { Write-Host "no uninstaller found in $dir" }
+          }
+          $report = @()
+          foreach ($probe in @($dir, (Join-Path $env:LOCALAPPDATA "com.genesis.final"))) {
+            if ($probe -and (Test-Path $probe)) {
+              $files = Get-ChildItem $probe -Recurse -File -ErrorAction SilentlyContinue
+              $bytes = ($files | Measure-Object Length -Sum).Sum
+              $report += "$probe : $($files.Count) files, $bytes bytes remain"
+              $files | Select-Object -First 20 | ForEach-Object { $report += "  LEFT: $($_.FullName) ($($_.Length) B)" }
+            } else {
+              $report += "$probe : GONE"
+            }
+          }
+          $report | Set-Content "$env:VF_WORK\shots\uninstall_report.txt"
+          $report | ForEach-Object { Write-Host $_ }
+
+      - name: V10 collect forensics + upload evidence
+        if: always()
+        run: |
+          $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
+          foreach ($f in @("boot.log", "llama-server.err.log", "chat.log")) {
+            $src = Join-Path $dataDir $f
+            if (Test-Path $src) { Copy-Item $src "$env:VF_WORK\shots\$f" -Force; Write-Host "forensics: $f" }
+          }
+          Copy-Item "$env:RUNNER_TEMP\bridge_session.json" "$env:VF_WORK\shots\bridge_session.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-complete-verification-evidence
+          path: ${{ env.VF_WORK }}\shots\

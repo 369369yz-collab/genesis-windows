@@ -17,6 +17,16 @@
     </div>
   </header>
 
+  <!-- Brain boot progress (2026-10-21): while the model verifies/downloads
+       the user MUST see state + percent. Hidden once the brain is ready. -->
+  <div id="bootBar" class="bootbar hidden">
+    <div class="bootbar-row">
+      <span id="bootLabel">در حال روشن‌شدن مغز...</span>
+      <span id="bootPct"></span>
+    </div>
+    <div class="bootbar-track"><div class="bootbar-fill" id="bootFill"></div></div>
+  </div>
+
   <main class="room">
     <section class="portrait-col">
       <div class="portrait-card">

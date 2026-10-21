@@ -294,5 +294,63 @@ function openSettings() {
   };
 }
 
+/* ---------- brain boot progress (2026-10-21) ----------
+   brain_status was registered in the backend from day one but NEVER
+   rendered: while the 5.85 GB model downloaded/verified, the UI sat on a
+   static chip and the user could not see a single percent — the exact
+   defect YZ hit with the first-boot download. Poll brain_status and show
+   honest state + percent until the brain service is actually up. */
+(function bootProgress() {
+  if (!invoke) return;
+  const bar = $("bootBar"), label = $("bootLabel"),
+        fill = $("bootFill"), pct = $("bootPct");
+  if (!bar) return;
+  const LABELS = {
+    downloading: "در حال دانلود مغز",
+    assembling: "در حال سرهم‌کردن مغز",
+    verifying: "در حال بررسی سلامت مغز",
+  };
+  let finished = false;
+  async function tick() {
+    if (finished) return;
+    try {
+      const st = await invoke("brain_status");
+      const state = st.model_state || "idle";
+      if (state === "error") {
+        finished = true;
+        bar.classList.remove("hidden");
+        bar.classList.add("error");
+        label.textContent = "خطا در آماده‌سازی مغز: " + (st.last_error || "نامشخص");
+        pct.textContent = "";
+        fill.style.width = "0%";
+        return;
+      }
+      if (state === "ready" && st.brain_running) {
+        finished = true;
+        bar.classList.add("hidden");
+        return;
+      }
+      bar.classList.remove("hidden");
+      if (state === "ready") {
+        label.textContent = "مدل آماده است — در حال روشن‌کردن مغز...";
+        fill.style.width = "100%";
+        pct.textContent = "";
+      } else if (LABELS[state]) {
+        const total = st.model_total_bytes || 0, got = st.model_downloaded_bytes || 0;
+        const p = total > 0 ? Math.floor((got / total) * 100) : 0;
+        label.textContent = LABELS[state] + "...";
+        fill.style.width = p + "%";
+        pct.textContent = p + "٪";
+      } else {
+        label.textContent = "در حال روشن‌شدن مغز...";
+        fill.style.width = "0%";
+        pct.textContent = "";
+      }
+    } catch (e) { /* brain command not reachable yet — keep waiting */ }
+    setTimeout(tick, 1000);
+  }
+  tick();
+})();
+
 /* ---------- greeting ---------- */
 addBubble("سلام پدر، چطور می‌تونم کمکت کنم؟", "her");

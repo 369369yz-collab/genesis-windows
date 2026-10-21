@@ -1,0 +1,6 @@
+;!@Install@!UTF-8!
+Title="GENESIS Final - FULL Setup"
+BeginPrompt="GENESIS Final - complete setup.\n\nThis installs the app AND the 5.85 GB brain model.\nNo downloads are needed - everything is inside this file.\n\nContinue?"
+Progress="yes"
+RunProgram="full-launcher.exe"
+;!@InstallEnd@!

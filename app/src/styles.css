@@ -100,3 +100,16 @@ body[data-theme="chrome-midnight"]{ --bg:#08090c; --bg2:#0e1014; --card:#101216;
   .portrait-card { width:88px; aspect-ratio:1/1; }
   .brand { font-size:16px; letter-spacing:6px; }
 }
+
+/* Brain boot progress bar (2026-10-21) — honest state while the brain
+   verifies/downloads its model; never a silent wait again. */
+.bootbar { border:1px solid var(--line); border-radius:14px; background:var(--card);
+  padding:10px 14px; display:flex; flex-direction:column; gap:8px; }
+.bootbar.hidden { display:none; }
+.bootbar-row { display:flex; align-items:center; justify-content:space-between;
+  font-size:13px; color:var(--text); }
+#bootPct { color:var(--dim); font-variant-numeric:tabular-nums; }
+.bootbar-track { height:6px; border-radius:999px; background:var(--accent-soft); overflow:hidden; }
+.bootbar-fill { height:100%; width:0%; border-radius:999px; background:var(--accent);
+  box-shadow:var(--glow); transition:width .4s ease; }
+.bootbar.error { border-color:#ef4444; }

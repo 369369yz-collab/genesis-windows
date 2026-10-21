@@ -1,0 +1,147 @@
+name: SPIKE — Inno Setup single-exe wrapping slim install + model
+
+# Packaging spike for GENESIS COMPLETE 1.0.0 (mission fallback order i).
+# Question: can Inno Setup 6 (preinstalled on windows-latest) compile ONE
+# setup .exe > 4 GB that clean-installs the app WITH the embedded model
+# and uninstalls clean? Evidence only — nothing here ships.
+#
+# Route: silent-install the green slim NSIS artifact from build-windows,
+# package that installed tree + the assembled GGUF (to {app}\resources\model,
+# where brain.rs looks for the bundled model) into a single Inno setup.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "build-windows run id (empty = latest successful on complete-1.0.0)"
+        required: false
+        default: ""
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  spike-inno:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      MODEL_SHA_PIN: 1A762D6D2C9CD7C34D2497DAD1CBB67B4F77F43DCCB8CD1EFE7F925B9A7E4371
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disk headroom (start)
+        run: Get-PSDrive C | Select-Object Used,Free | Format-List
+
+      - name: Resolve + download slim installer artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $runId = "${{ inputs.build_run_id }}"
+          if (-not $runId) {
+            $runId = gh api "repos/${{ github.repository }}/actions/workflows/build-windows.yml/runs?branch=complete-1.0.0&status=success&per_page=1" --jq '.workflow_runs[0].id'
+          }
+          if (-not $runId) { Write-Error "SPIKE-RED: no successful build-windows run"; exit 1 }
+          Write-Host "slim build run: $runId"
+          gh run download $runId --name GENESIS-Setup-Full-windows --dir slim_dl
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: artifact download failed"; exit 1 }
+          Get-ChildItem slim_dl -Recurse | Select-Object FullName,Length | Format-List
+
+      - name: Silent-install slim app to staging dir (layout evidence)
+        run: |
+          $exe = Get-ChildItem slim_dl -Recurse -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { Write-Error "SPIKE-RED: no slim installer exe"; exit 1 }
+          $stage = "C:\stage\app"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $p = Start-Process $exe.FullName -ArgumentList "/S","/D=$stage" -PassThru -Wait
+          Write-Host "slim install exit: $($p.ExitCode)"
+          Start-Sleep -Seconds 5
+          Write-Host "== installed tree (top 2 levels) =="
+          Get-ChildItem $stage -Recurse -Depth 1 | Select-Object FullName,Length | Format-List
+          $total = (Get-ChildItem $stage -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Host "installed tree total bytes: $total"
+
+      - name: Download model parts + assemble
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $parts = "$env:RUNNER_TEMP\modelparts"
+          New-Item -ItemType Directory -Force $parts | Out-Null
+          gh release download brain-model-v2 --pattern "*.part*" --dir $parts
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: part download failed"; exit 1 }
+          python installer/assemble_model.py $parts "$env:RUNNER_TEMP\model\genesis_369_v1_Q5_K_M.gguf"
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: model assembly/verify failed"; exit 1 }
+          Remove-Item $parts -Recurse -Force
+          Get-PSDrive C | Select-Object Used,Free | Format-List
+
+      - name: Write Inno script + compile — THE SPIKE
+        run: |
+          $iss = @'
+          [Setup]
+          AppId={{8F3A2C1E-4B5D-4E6F-9A0B-1C2D3E4F5A6B}}
+          AppName=GENESIS Complete
+          AppVersion=1.0.0
+          DefaultDirName={autopf}\GENESIS Complete
+          OutputDir=C:\stage\out
+          OutputBaseFilename=GENESIS-Complete-1.0.0-spike-setup
+          Compression=none
+          SolidCompression=no
+          DisableProgramGroupPage=yes
+          UninstallDisplayName=GENESIS Complete 1.0.0
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+
+          [Files]
+          Source: "C:\stage\app\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+          Source: "{%RUNNER_TEMP%}\model\genesis_369_v1_Q5_K_M.gguf"; DestDir: "{app}\resources\model"; Flags: ignoreversion
+
+          [Icons]
+          Name: "{autoprograms}\GENESIS Complete"; Filename: "{app}\GENESIS Final.exe"
+          '@
+          $iss = $iss -replace '\{%RUNNER_TEMP%\}', $env:RUNNER_TEMP
+          Set-Content "$env:RUNNER_TEMP\genesis-complete.iss" $iss -Encoding UTF8
+          Get-Content "$env:RUNNER_TEMP\genesis-complete.iss"
+          $iscc = @("C:\Program Files (x86)\Inno Setup 6\ISCC.exe","C:\Program Files\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { Write-Error "SPIKE-RED: Inno Setup 6 ISCC.exe not found on runner"; exit 1 }
+          Write-Host "ISCC: $iscc"
+          & $iscc "$env:RUNNER_TEMP\genesis-complete.iss"
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE RESULT: Inno compile FAILED (exit $LASTEXITCODE)"; exit 1 }
+          $out = Get-ChildItem C:\stage\out\*.exe | Select-Object -First 1
+          Write-Host "SPIKE RESULT: Inno compile SUCCEEDED"
+          Write-Host "setup: $($out.FullName) bytes=$($out.Length) sha256=$((Get-FileHash $out.FullName -Algorithm SHA256).Hash)"
+          "SETUP_EXE=$($out.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Silent-install the Inno setup + verify payload
+        run: |
+          $dest = "C:\stage\complete"
+          $p = Start-Process $env:SETUP_EXE -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dest" -PassThru -Wait
+          Write-Host "inno install exit: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { Write-Error "SPIKE-RED: Inno install failed"; exit 1 }
+          $model = Join-Path $dest "resources\model\genesis_369_v1_Q5_K_M.gguf"
+          if (-not (Test-Path $model)) { Write-Error "SPIKE-RED: installed model missing at $model"; Get-ChildItem $dest -Recurse -Depth 2 | Select-Object FullName | Format-List; exit 1 }
+          $h = (Get-FileHash $model -Algorithm SHA256).Hash
+          Write-Host "installed model sha256: $h"
+          if ($h -ne $env:MODEL_SHA_PIN) { Write-Error "SPIKE-RED: installed model hash mismatch"; exit 1 }
+          Write-Host "SPIKE PASS: model installed byte-identical"
+          $total = (Get-ChildItem $dest -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Host "complete install total bytes: $total"
+
+      - name: Uninstall + leftover check
+        run: |
+          $dest = "C:\stage\complete"
+          $unins = Get-ChildItem $dest -Filter "unins*.exe" | Select-Object -First 1
+          if (-not $unins) { Write-Error "SPIKE-RED: no uninstaller in install dir"; exit 1 }
+          $p = Start-Process $unins.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -PassThru -Wait
+          Write-Host "uninstall exit: $($p.ExitCode)"
+          Start-Sleep -Seconds 5
+          if (Test-Path $dest) {
+            $left = Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue
+            Write-Host "LEFTOVERS: $($left.Count) files"
+            $left | Select-Object FullName,Length | Format-List
+            if ($left.Count -gt 0) { Write-Error "SPIKE-RED: uninstall left files behind"; exit 1 }
+          }
+          Write-Host "SPIKE PASS: uninstall clean (install dir gone or empty)"
+          Get-PSDrive C | Select-Object Used,Free | Format-List

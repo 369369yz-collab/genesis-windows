@@ -1,0 +1,98 @@
+name: SPIKE — NSIS with embedded model (expect makensis limit)
+
+# Packaging spike for GENESIS COMPLETE 1.0.0 (mission-ordered, evidence only).
+# Question: can Tauri's NSIS bundler carry the 5.85 GB GGUF as a resource?
+# Prior evidence says NO (makensis is 32-bit, >4 GB package impossible) —
+# this run produces the primary CI evidence for the packaging decision.
+# Nothing here ships; the job's outcome feeds the Inno-vs-SFX decision.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike-nsis:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disk headroom (start)
+        run: Get-PSDrive C | Select-Object Used,Free | Format-List
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Tauri icons (binary-safe)
+        run: python installer/make_icons.py
+
+      - name: Restore VOID avatar assets (binary-safe)
+        run: python installer/make_avatar.py
+
+      - name: Install frontend deps
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend (VOID)
+        working-directory: app
+        run: npm run build
+
+      - name: Fetch portable Chromium (pinned Playwright)
+        run: python installer/fetch_chromium.py
+
+      - name: Fetch llama-server (pinned, Vulkan)
+        env:
+          GENESIS_SKIP_MODEL: "1"
+        run: python installer/fetch_model.py
+
+      - name: Fetch portable Python (pinned, hash-verified)
+        run: python installer/fetch_python.py
+
+      - name: Stage brain (one-code) into resources
+        run: python installer/stage_brain.py
+
+      - name: Download model parts + assemble into resources/model
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $parts = "$env:RUNNER_TEMP\modelparts"
+          New-Item -ItemType Directory -Force $parts | Out-Null
+          gh release download brain-model-v2 --pattern "*.part*" --dir $parts
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: part download failed"; exit 1 }
+          python installer/assemble_model.py $parts "app/src-tauri/resources/model/genesis_369_v1_Q5_K_M.gguf"
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE-RED: model assembly/verify failed"; exit 1 }
+          Remove-Item $parts -Recurse -Force
+
+      - name: Disk headroom (model staged)
+        run: |
+          Get-PSDrive C | Select-Object Used,Free | Format-List
+          Get-ChildItem app/src-tauri/resources/model | Select-Object Name,Length | Format-List
+
+      - name: Add resources/model to bundle config (runner-local edit)
+        run: |
+          python -c "import json; p='app/src-tauri/tauri.conf.json'; c=json.load(open(p)); c['bundle']['resources'].append('resources/model/'); json.dump(c, open(p,'w'), indent=2); print(c['bundle']['resources'])"
+
+      - name: Tauri build (NSIS) — THE SPIKE
+        working-directory: app
+        env:
+          GENESIS_PROFILE: full
+        run: |
+          npm run tauri build
+          if ($LASTEXITCODE -ne 0) { Write-Error "SPIKE RESULT: NSIS build FAILED with model resource (exit $LASTEXITCODE)"; exit 1 }
+          Write-Host "SPIKE RESULT: NSIS build SUCCEEDED with model resource"
+          Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object Name,Length | Format-List

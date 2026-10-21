@@ -65,7 +65,18 @@
               .filter(function (p) { return p.url().indexOf('devtools://') !== 0; });
             console.log('pages: ' + pages.map(function (p) { return p.url(); }).join(' | '));
             step('app page found', pages.length > 0, pages.length + ' page(s)');
-            const page = pages[0];
+            const splashPage = pages.find(function (p) { return p.url().indexOf('splash') !== -1; }) || null;
+            const mainPages = pages.filter(function (p) { return p.url().indexOf('splash') === -1; });
+            const page = mainPages[0] || pages[0];
+            console.log('splash page: ' + (splashPage ? splashPage.url() : 'NONE') + ' | main page: ' + page.url());
+
+            // (g) SPLASH proof, part 1: the splash window is the visible
+            // boot face at launch (main starts hidden, tauri.conf
+            // visible:false). Screenshot it before any handover can occur:
+            // handover requires brain ready, which is minutes away.
+            step('splash window present at launch', !!splashPage,
+                 splashPage ? splashPage.url() : 'no splash page among CDP pages');
+            if (splashPage) { await nonBlankShot(splashPage, '00-splash.png'); }
 
             const chatInput = page.locator('#chatInput');
             await chatInput.waitFor({ state: 'visible', timeout: 30000 });
@@ -75,7 +86,8 @@
             // (c) PROGRESS proof: catch the boot bar mid-verify with a
             // visible percent and screenshot it. First boot hashes the
             // embedded 5.85 GB model — the bar must show state + %.
-            const proofs = { progress: null, drag: null, close: null };
+            const proofs = { progress: null, drag: null, close: null, splash: null, handover: null };
+            proofs.splash = { observed: !!splashPage, url: splashPage ? splashPage.url() : null, at: new Date().toISOString() };
             {
               let captured = null;
               for (let i = 0; i < 225 && !captured; i++) { // up to ~90 s
@@ -96,6 +108,30 @@
               step('boot progress % captured on screenshot', !!captured,
                    captured ? ('label="' + captured.label + '" pct="' + captured.pct + '"') : 'boot bar never showed a percent');
               proofs.progress = captured;
+            }
+
+            // (g) SPLASH HANDOVER proof: wait for the brain, then the
+            // splash must dismiss ITSELF and the main window must take
+            // over. All later UI steps (theme/pills/drag/chat) run on the
+            // SHOWN main window — the main window starts hidden
+            // (visible:false), so exercising it before handover would be
+            // exercising a window the user cannot see.
+            await waitForBrain(1800000);
+            step('brain ready (llama-server /health 200)', true);
+            {
+              const hT0 = Date.now();
+              let splashGone = !splashPage;
+              while (!splashGone && Date.now() - hT0 < 180000) {
+                if (splashPage.isClosed()) { splashGone = true; break; }
+                const still = browser.contexts().flatMap(function (c) { return c.pages(); })
+                  .some(function (pg) { return pg.url().indexOf('splash') !== -1; });
+                if (!still) { splashGone = true; break; }
+                await new Promise(function (r) { setTimeout(r, 2000); });
+              }
+              proofs.handover = { splash_seen_at_launch: !!splashPage, splash_gone: splashGone, waited_ms: Date.now() - hT0, at: new Date().toISOString() };
+              step('splash handover (splash dismissed after brain ready, main takes over)', splashGone,
+                   'waited ' + Math.round((Date.now() - hT0) / 1000) + 's');
+              await nonBlankShot(page, '01b-after-handover.png');
             }
 
             // theme button: open + close picker
@@ -150,10 +186,8 @@
               await nonBlankShot(page, '03b-after-drag.png');
             }
 
-            // wait for the brain (model download+verify+load) before chatting;
-            // without this, chat_send fails closed while the model downloads
-            await waitForBrain(1800000);
-            step('brain ready (llama-server /health 200)', true);
+            // brain readiness + splash handover were proven above, before
+            // the theme/pill/drag exercise (the shown-window requirement).
 
             // type + Enter
             const msg1 = 'تست human-flow 123';

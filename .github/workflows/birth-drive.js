@@ -44,12 +44,31 @@
             const pages = browser.contexts().flatMap(function (c) { return c.pages(); })
               .filter(function (p) { return p.url().indexOf('devtools://') !== 0; });
             if (!pages.length) throw new Error('BIRTH-RED: no app page');
-            const page = pages[0];
+            const splashPage0 = pages.find(function (p) { return p.url().indexOf('splash') !== -1; }) || null;
+            const page = pages.filter(function (p) { return p.url().indexOf('splash') === -1; })[0] || pages[0];
             const chatInput = page.locator('#chatInput');
             await chatInput.waitFor({ state: 'visible', timeout: 30000 });
             log('launch + window rendered', true);
             await waitForBrain(1800000);
             log('brain ready (llama /health 200)', true);
+            // Splash handover: splash must dismiss itself once the brain
+            // is ready (Rust 120 s fail-safe is the backstop). Cycles below
+            // exercise the SHOWN main window only.
+            if (splashPage0) {
+              try { await splashPage0.screenshot({ path: path.join(OUT, 'birth-splash.png') }); } catch (e) {}
+              const hT0 = Date.now();
+              let gone = false;
+              while (!gone && Date.now() - hT0 < 180000) {
+                if (splashPage0.isClosed()) { gone = true; break; }
+                const still = browser.contexts().flatMap(function (c) { return c.pages(); })
+                  .some(function (pg) { return pg.url().indexOf('splash') !== -1; });
+                if (!still) { gone = true; break; }
+                await new Promise(function (r) { setTimeout(r, 2000); });
+              }
+              log('splash handover (splash dismissed, main shown)', gone, 'waited ' + Math.round((Date.now() - hT0) / 1000) + 's');
+            } else {
+              log('splash handover (no splash page at connect; main already sole page)', true);
+            }
 
             const prompts = ['سلام، یک جمله کوتاه درباره امروز بگو',
                              'یک نکته کوتاه درباره بازی‌ها بگو',

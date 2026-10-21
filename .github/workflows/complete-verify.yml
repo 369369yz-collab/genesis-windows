@@ -11,6 +11,9 @@ name: GENESIS COMPLETE — verification (guardian evidence)
 #       visible % while the embedded 5.85 GB model verifies.
 #   (d) CONNECTED proof — ci_bridge_session.py: production bridge /health
 #       handshake + live heartbeat/push/pull session (production code).
+#   (g) SPLASH HANDOVER — splash window screenshot at launch (00-splash.png),
+#       then after brain-ready the splash must dismiss itself and the main
+#       window takes over (complete_proofs.json: splash + handover records).
 #   (f) REAL model reply — human-flow checks inherited verbatim; the stub
 #       string appearing anywhere is FAIL; 06-chat-reply.png is evidence.
 # Coordinates of the final file come from workflow_dispatch inputs or
@@ -189,7 +192,7 @@ jobs:
           if (-not $ok) { Write-Error "VERIFY-RED: CDP never answered in 180s"; exit 1 }
           Write-Host "V6 PASS: webview rendered, CDP reachable"
 
-      - name: V7 drive the app (progress + drag + buttons + chat + CLOSE click)
+      - name: V7 drive the app (splash + handover + progress + drag + buttons + chat + CLOSE click)
         env:
           HF_OUT: ${{ env.VF_WORK }}\shots
         run: |

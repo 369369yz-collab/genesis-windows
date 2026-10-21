@@ -103,7 +103,7 @@ jobs:
           Source: "{%RUNNER_TEMP%}\model\genesis_369_v1_Q5_K_M.gguf"; DestDir: "{app}\resources\model"; Flags: ignoreversion
 
           [Icons]
-          Name: "{autoprograms}\GENESIS Complete"; Filename: "{app}\GENESIS Final.exe"
+          Name: "{autoprograms}\GENESIS Complete"; Filename: "{app}\genesis-final.exe"
           '@
           $iss = $iss -replace '\{%RUNNER_TEMP%\}', $env:RUNNER_TEMP
           Set-Content "$env:RUNNER_TEMP\genesis-complete.iss" $iss -Encoding UTF8

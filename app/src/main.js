@@ -107,6 +107,18 @@ function buildThemeGrid() {
 $("themeBtn").onclick = () => $("themePicker").classList.remove("hidden");
 $("themeClose").onclick = () => $("themePicker").classList.add("hidden");
 
+/* ---------- window close control (COMPLETE 1.0.0 defect fix) ----------
+   The frameless window shipped with NO way to close it from the UI.
+   The ✕ in the topbar closes the window for real (core:window:allow-close). */
+$("closeBtn").onclick = async () => {
+  try {
+    const w = await import("@tauri-apps/api/window");
+    await w.getCurrentWindow().close();
+  } catch (e) {
+    showToast("بستن پنجره ممکن نشد");
+  }
+};
+
 /* ---------- chat: REAL local-model inference (no canned replies) ---------- */
 function addErrorBubble(text) {
   const d = document.createElement("div");
@@ -283,10 +295,24 @@ function openSettings() {
        <button class="pill" id="updNo" style="margin-right:8px">فعلاً نه</button>`;
     $("updNo").onclick = () => { $("updAction").innerHTML = ""; $("updState").textContent = "نصب لغو شد"; };
     $("updGo").onclick = async () => {
-      $("updState").textContent = "در حال دانلود...";
+      $("updState").textContent = "در حال دانلود... ۰٪";
       $("updAction").innerHTML = "";
       try {
-        await update.downloadAndInstall();
+        /* Visible percent (COMPLETE 1.0.0 defect fix): stream the
+           updater events — no silent waits anywhere in the app. */
+        let downloaded = 0, contentLength = 0;
+        await update.downloadAndInstall((ev) => {
+          if (ev.event === "Started") {
+            contentLength = ev.data.contentLength || 0;
+            $("updState").textContent = "در حال دانلود... ۰٪";
+          } else if (ev.event === "Progress") {
+            downloaded += ev.data.chunkLength || 0;
+            const p = contentLength > 0 ? Math.floor((downloaded / contentLength) * 100) : 0;
+            $("updState").textContent = "در حال دانلود... " + p + "٪";
+          } else if (ev.event === "Finished") {
+            $("updState").textContent = "دانلود کامل شد — در حال نصب...";
+          }
+        });
         $("updState").textContent = "نصب شد — در حال راه‌اندازی مجدد...";
         await api.relaunch();
       } catch (e) { $("updState").textContent = "خطا در نصب: " + String(e).slice(0, 90); }

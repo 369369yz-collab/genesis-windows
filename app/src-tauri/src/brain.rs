@@ -262,12 +262,17 @@ impl BrainLauncher {
         Ok(())
     }
 
-    /// Ensure the local model: download parts on first boot, assemble,
-    /// verify. Returns the model path.
+    /// Ensure the local model. Lookup order (COMPLETE 1.0.0 — local
+    /// presence ALWAYS wins over the download path):
+    ///   1. <app data dir>/models/<name>   (pre-placed or prior download)
+    ///   2. resources/model/<name>         (bundled by the complete setup)
+    ///   3. release-parts download         (bare slim installs only)
+    /// Every local hit is W14-verified with progress before use.
     fn ensure_model(
         &self,
         manifest_path: &Path,
         models_dir: &Path,
+        res_dir: &Path,
     ) -> Result<PathBuf, String> {
         let raw = std::fs::read_to_string(manifest_path)
             .map_err(|e| format!("cannot read model manifest {}: {e}", manifest_path.display()))?;
@@ -285,7 +290,21 @@ impl BrainLauncher {
             return Ok(dest);
         }
 
-        // First boot: download the parts.
+        // COMPLETE 1.0.0: model bundled inside the app resources (the
+        // complete setup installs the GGUF at resources/model/). Verify
+        // in place (W14, with progress) and serve from there — zero
+        // downloads, zero duplication into the data dir.
+        let bundled = Self::resource(res_dir, &format!("model/{name}"));
+        if bundled.exists() {
+            self.blog(&format!("bundled model found: {}", bundled.display()));
+            self.verify_model_progress(&bundled, total)?;
+            self.set_model_state("ready", total, total);
+            self.status.lock().unwrap().model_verified = true;
+            eprintln!("[brain] bundled model verified: {}", bundled.display());
+            return Ok(bundled);
+        }
+
+        // First boot (slim install only): download the parts.
         let parts = m["parts"].as_array().ok_or("manifest: no parts")?;
         if parts.is_empty() {
             return Err("model manifest has no parts — cannot download".to_string());
@@ -476,7 +495,7 @@ impl BrainLauncher {
         }
 
         // 1. Local model: download on first boot, verify every boot (W14).
-        let model = match self.ensure_model(&manifest, &models_dir) {
+        let model = match self.ensure_model(&manifest, &models_dir, &res_dir) {
             Ok(m) => m,
             Err(e) => {
                 self.set_error(&e);

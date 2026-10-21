@@ -1,6 +1,6 @@
 [package]
 name = "genesis-final"
-version = "0.1.0"
+version = "1.0.0"
 description = "GENESIS Final — avatar-first Windows desktop app (Phase 2 shell)"
 authors = ["GENESIS"]
 edition = "2021"

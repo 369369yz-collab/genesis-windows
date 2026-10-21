@@ -16,6 +16,10 @@ on:
         description: "build-windows run id (empty = latest successful on complete-1.0.0)"
         required: false
         default: ""
+  push:
+    branches: [complete-1.0.0]
+    paths:
+      - '.github/workflows/spike-inno.yml'
 
 permissions:
   actions: read

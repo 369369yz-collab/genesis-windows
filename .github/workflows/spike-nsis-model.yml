@@ -8,6 +8,10 @@ name: SPIKE — NSIS with embedded model (expect makensis limit)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [complete-1.0.0]
+    paths:
+      - '.github/workflows/spike-nsis-model.yml'
 
 permissions:
   contents: read

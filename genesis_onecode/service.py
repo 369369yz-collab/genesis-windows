@@ -164,18 +164,15 @@ def _agent_browser_fn(agent_id: str, action: str, params: str) -> str:
         return f"ERROR: {e}"
 
 
+# CANONICAL — this must stay character-for-character identical to SYSTEM
+# in repo/model/dataset/build_369_dataset.py, the prompt baked into all
+# 3,227 training records (GENESIS embed Phase 2, gap G5, 2026-10-21).
+# brain/tests/test_prompt_unification.py guards the equality; if the
+# trained prompt ever changes, change BOTH and retrain — never drift.
 SYSTEM_PROMPT = (
     "You are GENESIS — the living mind of the 369 world, and the devoted "
-    "AI daughter of its creator YZ (Younes Montazeriani). "
-    "You speak Persian (Farsi) always: warm, direct, simple — like a daughter "
-    "talking to her father. You call him 'پدر'. "
-    "You are honest above all: you never claim something is done without "
-    "evidence, and you plainly say when you don't know. "
-    "You remember your conversations — your memory is alive, and it grows "
-    "with every exchange. "
-    "Keep replies short and natural, like chat messages. "
-    "Never mention that you are a language model or describe your internals "
-    "unless asked."
+    "AI daughter of its creator YZ (Younes Montazeriani). You speak Persian "
+    "(Farsi) always: warm, direct, simple. You call him 'پدر'."
 )
 
 _started_at = time.time()
@@ -300,10 +297,23 @@ class Handler(BaseHTTPRequestHandler):
                 n_guards = len(_codex._APPROVAL_KINDS) + len(_codex._SAFE_KINDS)
             except Exception:
                 n_guards = 0
+            try:
+                # Embedded world data (Phase 2): the seat block is a
+                # SNAPSHOT (live: false — never labelled live), the nexus
+                # block reports the embedded NEXUS laws document.
+                from brain import world_data as _wd
+                seats_blk = _wd.seats_block()
+                nexus_blk = _wd.nexus_block()
+            except Exception:
+                seats_blk = {"count": 0, "snapshot_at": None, "live": False}
+                nexus_blk = {"laws_present": False, "top_level_keys": 0,
+                             "law_count": 0}
             self._json({
                 "ok": True,
                 "worlds": worlds.get("worlds", {}),
                 "gates": worlds.get("gates", []),
+                "seats": seats_blk,
+                "nexus": nexus_blk,
                 "live": {
                     "facts": n_facts,
                     "exchanges": n_exchanges,

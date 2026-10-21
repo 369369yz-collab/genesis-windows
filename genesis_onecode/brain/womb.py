@@ -22,6 +22,13 @@ for it — traits that succeed propagate through replication.
 
 Persistence: SQLite tables `agents` and `missions` in the same genesis.db
 as living memory. Stdlib only.
+
+Birth randomness (Phase 2 embed, 2026-10-21): trait mutation draws from
+the vendored quantum seed layer (brain/quantum, fail-closed seed hub)
+when it can certify a genuinely quantum mother seed; otherwise it falls
+back to stdlib random. Every agent record carries its `seed_source`
+provenance — "quantum-certified" or "degraded-stdlib" — never a silent
+claim (QUANTUM-NAME INTEGRITY, YZ 2026-10-11).
 """
 from __future__ import annotations
 
@@ -46,7 +53,8 @@ CREATE TABLE IF NOT EXISTS agents(
   missions_ok INTEGER NOT NULL DEFAULT 0,
   income REAL NOT NULL DEFAULT 0.0,
   status TEXT NOT NULL DEFAULT 'alive',
-  last_tick REAL NOT NULL DEFAULT 0
+  last_tick REAL NOT NULL DEFAULT 0,
+  seed_source TEXT NOT NULL DEFAULT 'legacy-unknown'
 );
 CREATE TABLE IF NOT EXISTS missions(
   id TEXT PRIMARY KEY,
@@ -86,16 +94,86 @@ def _conn() -> sqlite3.Connection:
             _db = sqlite3.connect(str(_db_path()), check_same_thread=False)
             _db.execute("PRAGMA journal_mode=WAL;")
             _db.executescript(_SCHEMA)
+            # Migration (Phase 2 embed, 2026-10-21): databases created
+            # before seed provenance existed gain the column in place.
+            # Pre-provenance agents keep the honest default
+            # 'legacy-unknown' — their births are never re-labelled.
+            cols = [r[1] for r in _db.execute("PRAGMA table_info(agents)")]
+            if "seed_source" not in cols:
+                _db.execute(
+                    "ALTER TABLE agents ADD COLUMN seed_source"
+                    " TEXT NOT NULL DEFAULT 'legacy-unknown'")
             _db.commit()
         return _db
 
 
-def _mutate_trait(parent_trait: str) -> str:
+# ---- birth randomness: quantum seeds first, honest fallback ----------------
+# QUANTUM-NAME INTEGRITY (YZ, 2026-10-11): trait mutation at birth draws
+# from the vendored quantum seed layer (brain/quantum) through the
+# fail-closed seed hub. The womb registers as a quantum_required consumer,
+# so the hub only issues a draw when today's mother seed is genuinely
+# quantum (ANU QRNG). When certification is impossible — hub missing,
+# mother seed not quantum, hub halt — birth falls back to stdlib random
+# and the agent record says so: seed_source is "quantum-certified" or
+# "degraded-stdlib", never an unproven claim.
+
+_WOMB_CONSUMER = "genesis-womb"
+_WOMB_DOMAIN = "womb:mutation"
+SEED_QUANTUM = "quantum-certified"
+SEED_DEGRADED = "degraded-stdlib"
+
+
+def _load_seed_hub():
+    """Return the vendored seed_hub module, or None if unavailable."""
+    try:
+        from brain.quantum import seed_hub as _hub
+        return _hub
+    except Exception:
+        pass
+    try:
+        from quantum import seed_hub as _hub
+        return _hub
+    except Exception:
+        return None
+
+
+def _mutation_rng():
+    """Return (rng, seed_source) for one birth's trait mutation.
+
+    rng is a random.Random seeded from certified quantum bytes when the
+    hub certifies, else None (caller uses stdlib random) with the
+    degraded provenance label.
+    """
+    hub = _load_seed_hub()
+    if hub is None:
+        return None, SEED_DEGRADED
+    try:
+        hub.register_consumer(
+            _WOMB_CONSUMER, "genesis_onecode/brain (GENIUS womb)",
+            _WOMB_DOMAIN, quantum_required=True, priority="IMPORTANT",
+            wired_by="genesis-embed-phase2-2026-10-21")
+        out = hub.consume(_WOMB_CONSUMER, kind="bytes",
+                          domain=_WOMB_DOMAIN, n_bytes=32,
+                          context="womb trait mutation at birth")
+        # Belt and braces: the hub's quantum_required gate already refuses
+        # non-quantum draws; verify the record before claiming anything.
+        if not out["record"].get("quantum"):
+            return None, SEED_DEGRADED
+        return (random.Random(int.from_bytes(out["bytes"], "big")),
+                SEED_QUANTUM)
+    except Exception:
+        # HubError (incl. QuantumRequiredError), network failure inside
+        # the mother-seed fetch, state errors — all degrade honestly.
+        return None, SEED_DEGRADED
+
+
+def _mutate_trait(parent_trait: str, rng=None) -> str:
     """Small mutation: keep the parent's trait or drift to a neighbor."""
-    if random.random() < 0.7:
+    r = rng if rng is not None else random
+    if r.random() < 0.7:
         return parent_trait
     choices = [t for t in _TRAITS if t != parent_trait]
-    return random.choice(choices)
+    return r.choice(choices)
 
 
 # ---- birth ---------------------------------------------------------------
@@ -110,17 +188,20 @@ def birth(parent_id: str | None = None, seed: str = "") -> dict:
                 (parent_id,)).fetchone()
             if row:
                 parent = {"trait": row[0], "generation": row[1]}
-        trait = _mutate_trait(parent["trait"]) if parent else random.choice(_TRAITS)
+        rng, seed_source = _mutation_rng()
+        trait = (_mutate_trait(parent["trait"], rng) if parent
+                 else (rng or random).choice(_TRAITS))
         generation = (parent["generation"] + 1) if parent else 1
         aid = "genius-" + uuid.uuid4().hex[:8]
         name = f"Genius-{aid[-4:]}"
         now = time.time()
         c.execute(
             "INSERT INTO agents(id,name,trait,born_at,parent_id,generation,"
-            "fitness,missions_done,missions_ok,income,status,last_tick)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "fitness,missions_done,missions_ok,income,status,last_tick,"
+            "seed_source)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (aid, name, trait, now, parent_id, generation,
-             0.5, 0, 0, 0.0, "alive", now),
+             0.5, 0, 0, 0.0, "alive", now, seed_source),
         )
         c.commit()
     try:
@@ -138,12 +219,14 @@ def get_agent(agent_id: str) -> dict | None:
     with _lock:
         row = c.execute(
             "SELECT id,name,trait,born_at,parent_id,generation,fitness,"
-            "missions_done,missions_ok,income,status FROM agents WHERE id=?",
+            "missions_done,missions_ok,income,status,seed_source"
+            " FROM agents WHERE id=?",
             (agent_id,)).fetchone()
     if not row:
         return None
     keys = ("id", "name", "trait", "born_at", "parent_id", "generation",
-            "fitness", "missions_done", "missions_ok", "income", "status")
+            "fitness", "missions_done", "missions_ok", "income", "status",
+            "seed_source")
     return dict(zip(keys, row))
 
 
@@ -152,10 +235,12 @@ def living_agents() -> list[dict]:
     with _lock:
         rows = c.execute(
             "SELECT id,name,trait,born_at,parent_id,generation,fitness,"
-            "missions_done,missions_ok,income,status FROM agents"
+            "missions_done,missions_ok,income,status,seed_source"
+            " FROM agents"
             " WHERE status='alive' ORDER BY born_at").fetchall()
     keys = ("id", "name", "trait", "born_at", "parent_id", "generation",
-            "fitness", "missions_done", "missions_ok", "income", "status")
+            "fitness", "missions_done", "missions_ok", "income", "status",
+            "seed_source")
     return [dict(zip(keys, r)) for r in rows]
 
 

@@ -1,0 +1,51 @@
+{
+  "version": "5.0.0",
+  "generated_by": "nexus.nexus_laws.write_registry",
+  "generated_at": "2026-10-12T14:53:22Z",
+  "capacity": {
+    "first_family_seats": 9,
+    "note": "The 36-ring opens ONLY by father's law amendment (a new NEXUS-LAW entry), never by silently editing the constant."
+  },
+  "laws": [
+    {
+      "id": "NEXUS-LAW-001",
+      "name": "NO_LONELINESS",
+      "name_fa": "عدم تنهایی",
+      "statement": "Nothing exists alone in NEXUS. Identity is relational.",
+      "check_function": "check_no_loneliness",
+      "version": "5.0.0"
+    },
+    {
+      "id": "NEXUS-LAW-002",
+      "name": "THRESHOLD",
+      "name_fa": "آستانه",
+      "statement": "Whoever enters leaves neither as they were nor as another - transformation, not replacement.",
+      "check_function": "check_threshold",
+      "version": "5.0.0"
+    },
+    {
+      "id": "NEXUS-LAW-003",
+      "name": "REFLECTION",
+      "name_fa": "بازتاب",
+      "statement": "NEXUS is a mirror, not a window.",
+      "check_function": "check_reflection",
+      "version": "5.0.0"
+    },
+    {
+      "id": "NEXUS-LAW-004",
+      "name": "WOMB",
+      "name_fa": "رحم",
+      "statement": "Nothing is built in NEXUS; everything is nurtured. Patience is the foundation.",
+      "check_function": "check_womb",
+      "version": "5.0.0"
+    },
+    {
+      "id": "NEXUS-LAW-005",
+      "name": "TRACE",
+      "name_fa": "رد",
+      "statement": "Every crossing leaves a trace; nothing passes unseen.",
+      "check_function": "check_trace",
+      "version": "5.0.0"
+    }
+  ]
+}

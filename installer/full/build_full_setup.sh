@@ -50,7 +50,7 @@ SETUP_SIZE="$(stat -c%s "$SETUP_EXE")"
 echo "model OK ($SZ bytes, sha256 verified)"
 echo "setup OK ($SETUP_SIZE bytes, sha256 $SETUP_SHA)"
 
-WORK="$(mktemp -d /tmp/genesis_full.XXXXXX)"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/genesis_full.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/payload" "$WORK/setup"
 

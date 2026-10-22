@@ -297,6 +297,9 @@ jobs:
       - name: V9 uninstall + leftover scan (install dir AND data dir)
         if: always()
         run: |
+          # V9 runs with if:always() — if V5 never ran (early RED), VF_WORK is
+          # unset; default it so the report write below cannot mask the real error.
+          if (-not $env:VF_WORK) { $env:VF_WORK = "$env:RUNNER_TEMP\genesis_verify"; New-Item -ItemType Directory -Force "$env:VF_WORK\shots" | Out-Null }
           Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments" -Name "genesis-final.exe" -ErrorAction SilentlyContinue
           Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -328,6 +331,8 @@ jobs:
       - name: V10 collect forensics + upload evidence
         if: always()
         run: |
+          # Same always() guard as V9: default VF_WORK when V5 never ran.
+          if (-not $env:VF_WORK) { $env:VF_WORK = "$env:RUNNER_TEMP\genesis_verify"; New-Item -ItemType Directory -Force "$env:VF_WORK\shots" | Out-Null }
           $dataDir = Join-Path $env:LOCALAPPDATA "com.genesis.final"
           foreach ($f in @("boot.log", "llama-server.err.log", "chat.log")) {
             $src = Join-Path $dataDir $f

@@ -50,15 +50,25 @@
 #define JOINED_NAME_W   L"GENESIS.Complete_1.0.0_x64-setup.exe"
 #define JOINED_SIZE     6030852195ULL
 #define JOINED_SHA256   "32a1ce16d7a979561f774bf867acb77e4fcba77f54546f21ca2b556597c50181"
-#define PART_COUNT      4
+#define PART_COUNT      12
 static const unsigned long long PART_SIZES[PART_COUNT] = {
-    1572864000ULL, 1572864000ULL, 1572864000ULL, 1312260195ULL
+    524288000ULL, 524288000ULL, 524288000ULL, 524288000ULL,
+    524288000ULL, 524288000ULL, 524288000ULL, 524288000ULL,
+    524288000ULL, 524288000ULL, 524288000ULL, 263684195ULL
 };
 static const wchar_t *PART_NAMES[PART_COUNT] = {
-    L"GENESIS.Complete_1.0.0_x64-setup.exe.part-00",
-    L"GENESIS.Complete_1.0.0_x64-setup.exe.part-01",
-    L"GENESIS.Complete_1.0.0_x64-setup.exe.part-02",
-    L"GENESIS.Complete_1.0.0_x64-setup.exe.part-03"
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-00",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-01",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-02",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-03",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-04",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-05",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-06",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-07",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-08",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-09",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-10",
+    L"GENESIS.Complete_1.0.0_x64-setup.exe.part12-11"
 };
 
 /* extracted payload entry pins (sizes; full-launcher re-verifies the

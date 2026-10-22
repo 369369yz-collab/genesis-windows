@@ -105,14 +105,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $parts = "$env:RUNNER_TEMP\setup_parts"; New-Item -ItemType Directory -Force $parts | Out-Null
-          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $parts
+          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*" --dir $parts
           if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: setup parts download failed"; exit 1 }
           $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
           $out = [System.IO.File]::Create($dst)
           try {
-            foreach ($i in 0..3) {
-              $p = Join-Path $parts ("GENESIS.Complete_1.0.0_x64-setup.exe.part-0$i")
-              if (-not (Test-Path $p)) { Write-Error "VERIFY-RED: missing part-0$i"; exit 1 }
+            foreach ($i in 0..11) {
+              $n = "{0:D2}" -f $i
+              $p = Join-Path $parts ("GENESIS.Complete_1.0.0_x64-setup.exe.part12-$n")
+              if (-not (Test-Path $p)) { Write-Error "VERIFY-RED: missing part12-$n"; exit 1 }
               $inp = [System.IO.File]::OpenRead($p)
               try { $inp.CopyTo($out) } finally { $inp.Dispose() }
             }

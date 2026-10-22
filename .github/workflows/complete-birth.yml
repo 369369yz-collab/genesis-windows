@@ -6,12 +6,15 @@ name: GENESIS COMPLETE — birth test (30-60 min, guardian evidence e)
 # (birth-drive.js timestamps every action into birth_log.jsonl; this
 # workflow asserts the first->last span >= 30 min — a ~5 min run does NOT
 # satisfy the gate). Ends with the real close control + OS process check.
-# Coordinates: dispatch inputs or repo variables COMPLETE_SETUP_* .
+# Coordinates: dispatch inputs or repo variables COMPLETE_SETUP_*
+# (release tag + sha256 + size + kind; B1 downloads the 4 prerelease
+# parts with the workflow token, joins them, and byte-verifies the join).
 
 on:
   workflow_dispatch:
     inputs:
-      setup_url:
+      release_tag:
+        description: "Release tag hosting the final setup parts"
         required: false
         default: ""
       setup_sha256:
@@ -33,8 +36,12 @@ on:
   # B0 (runs 39642486061/39642485927-class noise). Dispatch explicitly once
   # the final setup exists (genesis-build-watch 2026-10-21).
 
+# contents: write is required ONLY so the run token can read the DRAFT
+# prerelease assets it must verify (probe run 39763487029: a read-scoped
+# token gets "release not found" on drafts; a write-scoped token can
+# download them). No step in this workflow writes repository content.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   birth:
@@ -50,27 +57,39 @@ jobs:
 
       - name: B0 resolve setup coordinates (fail-closed)
         run: |
-          $url = "${{ inputs.setup_url }}"; if (-not $url) { $url = "${{ vars.COMPLETE_SETUP_URL }}" }
+          $rel = "${{ inputs.release_tag }}"; if (-not $rel) { $rel = "${{ vars.COMPLETE_SETUP_RELEASE }}" }
           $sha = "${{ inputs.setup_sha256 }}"; if (-not $sha) { $sha = "${{ vars.COMPLETE_SETUP_SHA256 }}" }
           $size = "${{ inputs.setup_size }}"; if (-not $size) { $size = "${{ vars.COMPLETE_SETUP_SIZE }}" }
           $kind = "${{ inputs.installer_kind }}"; if (-not $kind) { $kind = "${{ vars.COMPLETE_SETUP_KIND }}" }
-          if (-not $url -or -not $sha -or -not $size -or -not $kind) {
+          if (-not $rel -or -not $sha -or -not $size -or -not $kind) {
             Write-Error "BIRTH-RED: setup coordinates incomplete"; exit 1
           }
-          "SETUP_URL=$url" | Out-File $env:GITHUB_ENV -Append
+          "SETUP_RELEASE=$rel" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
           "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
           Write-Host "kind=$kind size=$size sha=$sha"
 
-      - name: B1 download final setup + verify bytes (fail-closed)
+      - name: B1 fetch final setup (prerelease parts + join) + verify bytes (fail-closed)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $parts = "$env:RUNNER_TEMP\setup_parts"; New-Item -ItemType Directory -Force $parts | Out-Null
+          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $parts
+          if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: setup parts download failed"; exit 1 }
           $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
-          curl.exe -L --fail --retry 3 -o $dst $env:SETUP_URL
-          if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: download failed"; exit 1 }
+          $out = [System.IO.File]::Create($dst)
+          try {
+            foreach ($i in 0..3) {
+              $p = Join-Path $parts ("GENESIS.Complete_1.0.0_x64-setup.exe.part-0$i")
+              if (-not (Test-Path $p)) { Write-Error "BIRTH-RED: missing part-0$i"; exit 1 }
+              $inp = [System.IO.File]::OpenRead($p)
+              try { $inp.CopyTo($out) } finally { $inp.Dispose() }
+            }
+          } finally { $out.Dispose() }
           $f = Get-Item $dst
           $h = (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower()
-          Write-Host "downloaded: $($f.Length) bytes sha256=$h"
+          Write-Host "joined: $($f.Length) bytes sha256=$h"
           if ($f.Length -ne [int64]$env:SETUP_SIZE) { Write-Error "BIRTH-RED: size mismatch"; exit 1 }
           if ($h -ne $env:SETUP_SHA) { Write-Error "BIRTH-RED: sha256 mismatch"; exit 1 }
           "SETUP_EXE=$dst" | Out-File $env:GITHUB_ENV -Append

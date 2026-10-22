@@ -17,14 +17,19 @@ name: GENESIS COMPLETE — verification (guardian evidence)
 #   (f) REAL model reply — human-flow checks inherited verbatim; the stub
 #       string appearing anywhere is FAIL; 06-chat-reply.png is evidence.
 # Coordinates of the final file come from workflow_dispatch inputs or
-# repository variables COMPLETE_SETUP_URL / _SHA256 / _SIZE / _KIND
-# (set when the file is hosted). Fail-closed everywhere.
+# repository variables COMPLETE_SETUP_RELEASE / _SHA256 / _SIZE / _KIND.
+# The file is distributed as 4 parts on the genesis-complete-1.0.0
+# prerelease; V1 downloads the parts with the workflow token and joins
+# them, then applies the same size + sha256 fail-closed checks to the
+# joined bytes. (Path ALEF, YZ-approved 2026-10-22: the old single-URL
+# Drive coordinate pointed at superseded bytes and is retired.)
+# Fail-closed everywhere.
 
 on:
   workflow_dispatch:
     inputs:
-      setup_url:
-        description: "Direct download URL of the final complete setup"
+      release_tag:
+        description: "Release tag hosting the final setup parts"
         required: false
         default: ""
       setup_sha256:
@@ -45,8 +50,12 @@ on:
   # V0 (runs 39642486061/39642485927-class noise). Dispatch explicitly once
   # the final setup exists (genesis-build-watch 2026-10-21).
 
+# contents: write is required ONLY so the run token can read the DRAFT
+# prerelease assets it must verify (probe run 39763487029: a read-scoped
+# token gets "release not found" on drafts; a write-scoped token can
+# download them). No step in this workflow writes repository content.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -63,28 +72,40 @@ jobs:
       - name: V0 resolve setup coordinates (fail-closed)
         id: coords
         run: |
-          $url = "${{ inputs.setup_url }}"; if (-not $url) { $url = "${{ vars.COMPLETE_SETUP_URL }}" }
+          $rel = "${{ inputs.release_tag }}"; if (-not $rel) { $rel = "${{ vars.COMPLETE_SETUP_RELEASE }}" }
           $sha = "${{ inputs.setup_sha256 }}"; if (-not $sha) { $sha = "${{ vars.COMPLETE_SETUP_SHA256 }}" }
           $size = "${{ inputs.setup_size }}"; if (-not $size) { $size = "${{ vars.COMPLETE_SETUP_SIZE }}" }
           $kind = "${{ inputs.installer_kind }}"; if (-not $kind) { $kind = "${{ vars.COMPLETE_SETUP_KIND }}" }
-          if (-not $url -or -not $sha -or -not $size -or -not $kind) {
-            Write-Error "VERIFY-RED: setup coordinates incomplete (url/sha/size/kind) — set dispatch inputs or repo variables"; exit 1
+          if (-not $rel -or -not $sha -or -not $size -or -not $kind) {
+            Write-Error "VERIFY-RED: setup coordinates incomplete (release/sha/size/kind) — set dispatch inputs or repo variables"; exit 1
           }
-          "SETUP_URL=$url"   | Out-File $env:GITHUB_ENV -Append
+          "SETUP_RELEASE=$rel" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
           "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
           Write-Host "kind=$kind size=$size sha=$sha"
-          Write-Host "url host: $(([uri]$url).Host)"
+          Write-Host "release: $rel"
 
-      - name: V1 download final setup + verify bytes (fail-closed)
+      - name: V1 fetch final setup (prerelease parts + join) + verify bytes (fail-closed)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $parts = "$env:RUNNER_TEMP\setup_parts"; New-Item -ItemType Directory -Force $parts | Out-Null
+          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $parts
+          if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: setup parts download failed"; exit 1 }
           $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
-          curl.exe -L --fail --retry 3 -o $dst $env:SETUP_URL
-          if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: setup download failed"; exit 1 }
+          $out = [System.IO.File]::Create($dst)
+          try {
+            foreach ($i in 0..3) {
+              $p = Join-Path $parts ("GENESIS.Complete_1.0.0_x64-setup.exe.part-0$i")
+              if (-not (Test-Path $p)) { Write-Error "VERIFY-RED: missing part-0$i"; exit 1 }
+              $inp = [System.IO.File]::OpenRead($p)
+              try { $inp.CopyTo($out) } finally { $inp.Dispose() }
+            }
+          } finally { $out.Dispose() }
           $f = Get-Item $dst
           $h = (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower()
-          Write-Host "downloaded: $($f.Length) bytes sha256=$h"
+          Write-Host "joined: $($f.Length) bytes sha256=$h"
           if ($f.Length -ne [int64]$env:SETUP_SIZE) { Write-Error "VERIFY-RED: size mismatch ($($f.Length) != $env:SETUP_SIZE)"; exit 1 }
           if ($h -ne $env:SETUP_SHA) { Write-Error "VERIFY-RED: sha256 mismatch"; exit 1 }
           "SETUP_EXE=$dst" | Out-File $env:GITHUB_ENV -Append

@@ -3,6 +3,57 @@
  * Pill row: جهان ۳۶۹، جهان نکسوس، گذرگاه‌های زیست، گفتگو، تنظیمات — all real, zero placeholders.
  */
 
+/* =====================================================================
+ * MANUAL WINDOW DRAG — 2026-10-22 (run 39806961252 V7 RED follow-up).
+ * Tauri's data-tauri-drag-region NEVER moved this window: 0.1.0 P0
+ * defect #2 on YZ's real PC, and CI runs 39766699124 + 39806961252
+ * (dx=0 dy=0) — the native drag loop needs the OS cursor to move, which
+ * CDP-synthesized input does not guarantee. This manual implementation
+ * tracks pointer deltas and calls window.setPosition(): works with real
+ * mice AND Playwright/CDP. Buttons, inputs and links in the topbar are
+ * excluded from the drag surface.
+ * ===================================================================== */
+(() => {
+  let drag = null;
+  async function winApi() {
+    try {
+      const m = await import("@tauri-apps/api/window");
+      return { win: m.getCurrentWindow(), LogicalPosition: m.LogicalPosition };
+    } catch { return null; }
+  }
+  function bindDrag() {
+    const bar = document.getElementById("topbar");
+    if (!bar) { setTimeout(bindDrag, 300); return; }
+    bar.addEventListener("mousedown", async (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest("button, input, a, select, textarea")) return;
+      const api = await winApi();
+      if (!api) return;
+      const [pos, scale] = await Promise.all([
+        api.win.outerPosition().catch(() => null),
+        api.win.scaleFactor().catch(() => 1),
+      ]);
+      if (!pos) return;
+      drag = { x0: e.clientX, y0: e.clientY, wx: pos.x, wy: pos.y, s: scale || 1, api };
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!drag) return;
+      if (e.buttons !== 1) { drag = null; return; }
+      const dx = (e.clientX - drag.x0) * drag.s;
+      const dy = (e.clientY - drag.y0) * drag.s;
+      const nx = (drag.wx + dx) / drag.s;
+      const ny = (drag.wy + dy) / drag.s;
+      drag.api.win.setPosition(new drag.api.LogicalPosition(nx, ny)).catch(() => {});
+    });
+    window.addEventListener("mouseup", () => { drag = null; });
+    window.addEventListener("blur", () => { drag = null; });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindDrag);
+  } else { bindDrag(); }
+})();
+
 const THEMES = [
   { id: "deep-purple",    fa: "بنفش عمیق",    c: "#8b5cf6" },
   { id: "ocean-night",    fa: "اقیانوس شب",   c: "#0ea5e9" },

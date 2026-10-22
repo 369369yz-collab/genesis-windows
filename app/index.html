@@ -9,15 +9,13 @@
 </head>
 <body data-theme="deep-purple">
 <div id="app">
-  <!-- DRAG FIX 2026-10-22 (run 39766699124 V7 RED): a BARE data-tauri-drag-region
-       only fires on DIRECT clicks on the element itself (Tauri 2.12.3
-       src/window/scripts/drag.js: `if (attr === '' || attr === 'true')
-       return el === composedPath[0]`). The CI drag test presses at (240,18),
-       which lands on the .status-chip child — the header never saw it, so
-       the window never moved (dx=0 dy=0). "deep" makes the whole header
-       subtree draggable; buttons still opt out via isClickableElement. -->
-  <header class="topbar" data-tauri-drag-region="deep">
-    <div class="brand" data-tauri-drag-region>GENESIS</div>
+  <!-- DRAG: manual JS implementation (see main.js). Tauri's
+       data-tauri-drag-region never moved the window — not in CI
+       (runs 39766699124/39806961252 V7 RED, dx=0 dy=0) nor on YZ's PC
+       (0.1.0 P0 defect #2). The native drag loop needs the OS cursor to
+       move; manual setPosition() works with real mice AND CDP input. -->
+  <header class="topbar" id="topbar">
+    <div class="brand">GENESIS</div>
     <div class="top-left">
       <div class="status-chip"><span class="dot"></span>آنلاین • آماده</div>
       <button class="theme-btn" id="themeBtn" aria-label="تم">◐</button>

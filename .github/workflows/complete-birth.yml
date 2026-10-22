@@ -9,6 +9,11 @@ name: GENESIS COMPLETE — birth test (30-60 min, guardian evidence e)
 # Coordinates: dispatch inputs or repo variables COMPLETE_SETUP_*
 # (release tag + sha256 + size + kind; B1 downloads the 4 prerelease
 # parts with the workflow token, joins them, and byte-verifies the join).
+# Bootstrapper route (kind=boot, 2026-10-22): B2 downloads the small
+# bootstrapper asset + the parts into one folder and runs the
+# bootstrapper (the exact user flow) instead of launching the
+# >4 GiB joined file, which the Windows loader rejects (error 193
+# class). All other steps unchanged; inno/sfx branches verbatim.
 
 on:
   workflow_dispatch:
@@ -68,6 +73,13 @@ jobs:
           "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
           "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
+          $bootSha = "${{ vars.COMPLETE_BOOTSTRAPPER_SHA256 }}"
+          $bootSize = "${{ vars.COMPLETE_BOOTSTRAPPER_SIZE }}"
+          if ($kind -eq "boot" -and (-not $bootSha -or -not $bootSize)) {
+            Write-Error "BIRTH-RED: kind=boot but COMPLETE_BOOTSTRAPPER_SHA256/_SIZE repo vars are missing"; exit 1
+          }
+          "BOOT_SHA=$($bootSha.ToLower())" | Out-File $env:GITHUB_ENV -Append
+          "BOOT_SIZE=$bootSize" | Out-File $env:GITHUB_ENV -Append
           Write-Host "kind=$kind size=$size sha=$sha"
 
       - name: B1 fetch final setup (prerelease parts + join) + verify bytes (fail-closed)
@@ -96,6 +108,8 @@ jobs:
           Write-Host "B1 PASS"
 
       - name: B2 install final setup + locate app + verify embedded model
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ($env:SETUP_KIND -eq "inno") {
             $dest = "C:\genesis-complete"
@@ -106,6 +120,49 @@ jobs:
             if ((Get-FileHash $model -Algorithm SHA256).Hash -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
             "INSTALL_DIR=$dest" | Out-File $env:GITHUB_ENV -Append
             $exe = Get-ChildItem $dest -File -Filter "*.exe" | Where-Object { $_.Name -notmatch "(?i)unins" } | Select-Object -First 1
+          } elseif ($env:SETUP_KIND -eq "boot") {
+            # Bootstrapper route (kind=boot): the EXACT user flow — see
+            # complete-verify.yml V3. The bootstrapper joins, sha-verifies
+            # the join, extracts the payload, runs full-launcher (install
+            # + model pre-place), then the app is located via the registry
+            # exactly as in the sfx branch.
+            $bootDir = "$env:RUNNER_TEMP\boot"
+            New-Item -ItemType Directory -Force $bootDir | Out-Null
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $bootDir
+            if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: parts download failed (boot)"; exit 1 }
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-bootstrapper.exe" --dir $bootDir
+            if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: bootstrapper download failed"; exit 1 }
+            $bootExe = Join-Path $bootDir "GENESIS.Complete_1.0.0_x64-bootstrapper.exe"
+            $bf = Get-Item $bootExe
+            $bh = (Get-FileHash $bootExe -Algorithm SHA256).Hash.ToLower()
+            Write-Host "bootstrapper: $($bf.Length) bytes sha256=$bh"
+            if ($bf.Length -ne [int64]$env:BOOT_SIZE) { Write-Error "BIRTH-RED: bootstrapper size mismatch"; exit 1 }
+            if ($bh -ne $env:BOOT_SHA) { Write-Error "BIRTH-RED: bootstrapper sha256 mismatch"; exit 1 }
+            $p = Start-Process $bootExe -WorkingDirectory $bootDir -PassThru
+            Write-Host "bootstrapper pid: $($p.Id)"
+            $modelDest = Join-Path $env:LOCALAPPDATA "com.genesis.final\models\genesis_369_v1_Q5_K_M.gguf"
+            $ok = $false
+            for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+              Start-Sleep -Seconds 10
+              if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
+            }
+            if (-not $ok) { Write-Error "BIRTH-RED: bootstrapper did not pre-place model in 900s"; exit 1 }
+            if ((Get-FileHash $modelDest -Algorithm SHA256).Hash -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
+            Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+            $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
+            $entry = $null
+            foreach ($hv in $hives) {
+              $entry = Get-ChildItem $hv -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*GENESIS*" } | Select-Object -First 1
+              if ($entry) { break }
+            }
+            if (-not $entry) { Write-Error "BIRTH-RED: no GENESIS uninstall entry (boot)"; exit 1 }
+            $dir = ($entry.InstallLocation -replace '^"|"$','').Trim()
+            "INSTALL_DIR=$dir" | Out-File $env:GITHUB_ENV -Append
+            $exe = Get-ChildItem $dir -File -Filter "*.exe" | Where-Object { $_.Name -match "(?i)^genesis.*\.exe$" -and $_.Name -notmatch "(?i)uninstall" } | Select-Object -First 1
           } else {
             $p = Start-Process $env:SETUP_EXE -PassThru
             $modelDest = Join-Path $env:LOCALAPPDATA "com.genesis.final\models\genesis_369_v1_Q5_K_M.gguf"

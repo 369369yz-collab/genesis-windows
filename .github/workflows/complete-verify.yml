@@ -23,6 +23,13 @@ name: GENESIS COMPLETE — verification (guardian evidence)
 # them, then applies the same size + sha256 fail-closed checks to the
 # joined bytes. (Path ALEF, YZ-approved 2026-10-22: the old single-URL
 # Drive coordinate pointed at superseded bytes and is retired.)
+# Bootstrapper route (kind=boot, 2026-10-22): the joined >4 GiB file
+# cannot be LAUNCHED by the Windows loader (runs 39665797415 /
+# 39678558530 / 39764072162: V1 byte-verified, V3 error 193 class).
+# V3 therefore downloads the small bootstrapper asset + the parts
+# into one folder and runs the bootstrapper, exactly as a user
+# does; it joins, re-verifies, extracts and installs. All other
+# steps unchanged; the inno/sfx branches are kept verbatim.
 # Fail-closed everywhere.
 
 on:
@@ -83,6 +90,13 @@ jobs:
           "SETUP_SHA=$($sha.ToLower())" | Out-File $env:GITHUB_ENV -Append
           "SETUP_SIZE=$size" | Out-File $env:GITHUB_ENV -Append
           "SETUP_KIND=$kind" | Out-File $env:GITHUB_ENV -Append
+          $bootSha = "${{ vars.COMPLETE_BOOTSTRAPPER_SHA256 }}"
+          $bootSize = "${{ vars.COMPLETE_BOOTSTRAPPER_SIZE }}"
+          if ($kind -eq "boot" -and (-not $bootSha -or -not $bootSize)) {
+            Write-Error "VERIFY-RED: kind=boot but COMPLETE_BOOTSTRAPPER_SHA256/_SIZE repo vars are missing"; exit 1
+          }
+          "BOOT_SHA=$($bootSha.ToLower())" | Out-File $env:GITHUB_ENV -Append
+          "BOOT_SIZE=$bootSize" | Out-File $env:GITHUB_ENV -Append
           Write-Host "kind=$kind size=$size sha=$sha"
           Write-Host "release: $rel"
 
@@ -118,6 +132,8 @@ jobs:
           Write-Host "V2 PASS: production /health 200 + heartbeat/push/pull round-trip"
 
       - name: V3 install final setup (silent) + locate app + verify embedded model
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ($env:SETUP_KIND -eq "inno") {
             $dest = "C:\genesis-complete"
@@ -131,6 +147,43 @@ jobs:
             if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: embedded model hash != pin"; exit 1 }
             "INSTALL_DIR=$dest" | Out-File $env:GITHUB_ENV -Append
             Write-Host "V3 PASS (inno): installed with embedded model, hash = pin"
+          } elseif ($env:SETUP_KIND -eq "boot") {
+            # Bootstrapper route (kind=boot): exercise the EXACT user flow.
+            # Parts + bootstrapper land in ONE folder; the bootstrapper
+            # (pin-checked first) joins, sha-verifies the join against the
+            # release pin, extracts the payload and runs full-launcher,
+            # which installs the app and pre-places the model. The same
+            # model checks as the sfx branch apply afterwards.
+            $bootDir = "$env:RUNNER_TEMP\boot"
+            New-Item -ItemType Directory -Force $bootDir | Out-Null
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $bootDir
+            if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: parts download failed (boot)"; exit 1 }
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-bootstrapper.exe" --dir $bootDir
+            if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: bootstrapper download failed"; exit 1 }
+            $bootExe = Join-Path $bootDir "GENESIS.Complete_1.0.0_x64-bootstrapper.exe"
+            $bf = Get-Item $bootExe
+            $bh = (Get-FileHash $bootExe -Algorithm SHA256).Hash.ToLower()
+            Write-Host "bootstrapper: $($bf.Length) bytes sha256=$bh"
+            if ($bf.Length -ne [int64]$env:BOOT_SIZE) { Write-Error "VERIFY-RED: bootstrapper size mismatch ($($bf.Length) != $env:BOOT_SIZE)"; exit 1 }
+            if ($bh -ne $env:BOOT_SHA) { Write-Error "VERIFY-RED: bootstrapper sha256 mismatch"; exit 1 }
+            $p = Start-Process $bootExe -WorkingDirectory $bootDir -PassThru
+            Write-Host "bootstrapper pid: $($p.Id)"
+            $modelDest = Join-Path $env:LOCALAPPDATA "com.genesis.final\models\genesis_369_v1_Q5_K_M.gguf"
+            $ok = $false
+            for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+              Start-Sleep -Seconds 10
+              if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
+            }
+            if (-not $ok) { Write-Error "VERIFY-RED: bootstrapper did not pre-place the model in 900s"; exit 1 }
+            $mh = (Get-FileHash $modelDest -Algorithm SHA256).Hash
+            Write-Host "pre-placed model sha256: $mh"
+            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: pre-placed model hash != pin"; exit 1 }
+            Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            foreach ($n in @("llama-server-vulkan","llama-server-cpu")) {
+              Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 3
+            Write-Host "V3 PASS (boot): bootstrapper joined+verified+extracted, model pre-placed hash = pin; auto-launched app stopped for CDP relaunch"
           } else {
             # SFX route: the file self-extracts; full-launcher installs the
             # app (inner NSIS), pre-places the model into the data dir and

@@ -8,6 +8,9 @@ name: PROBE — draft release asset access (temp, delete after use)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [complete-1.0.0]
+    paths: ['.github/workflows/probe-draft.yml']
 
 jobs:
   read-token:

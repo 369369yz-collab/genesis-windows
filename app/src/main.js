@@ -3,51 +3,57 @@
  * Pill row: جهان ۳۶۹، جهان نکسوس، گذرگاه‌های زیست، گفتگو، تنظیمات — all real, zero placeholders.
  */
 
+import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
+
 /* =====================================================================
- * MANUAL WINDOW DRAG — 2026-10-22 (run 39806961252 V7 RED follow-up).
+ * MANUAL WINDOW DRAG — 2026-10-22 (run 39845330540 V7 RED follow-up).
  * Tauri's data-tauri-drag-region NEVER moved this window: 0.1.0 P0
- * defect #2 on YZ's real PC, and CI runs 39766699124 + 39806961252
- * (dx=0 dy=0) — the native drag loop needs the OS cursor to move, which
- * CDP-synthesized input does not guarantee. This manual implementation
- * tracks pointer deltas and calls window.setPosition(): works with real
- * mice AND Playwright/CDP. Buttons, inputs and links in the topbar are
- * excluded from the drag surface.
+ * defect #2 on YZ's real PC, and CI runs 39766699124/39806961252/
+ * 39845330540 (dx=0 dy=0) — the native drag loop needs the OS cursor to
+ * move, which CDP-synthesized input does not guarantee. This manual
+ * implementation tracks pointer deltas and calls window.setPosition():
+ * works with real mice AND Playwright/CDP. Buttons/inputs/links in the
+ * topbar are excluded from the drag surface.
+ *
+ * CRITICAL: the entire drag path is SYNCHRONOUS after startup.
+ * v1 awaited the Tauri import inside mousedown (race: rapid CDP
+ * mousemoves arrived while drag was null). Here the API, scale factor,
+ * and window position are pre-resolved at module load; mousedown only
+ * records coordinates; mousemove applies deltas to the cached position.
  * ===================================================================== */
+const __dragWin = (() => { try { return getCurrentWindow(); } catch { return null; } })();
+let __dragScale = 1;
+let __dragPos = null;  // cached {x, y} physical — refreshed async, updated on every move
+if (__dragWin) {
+  __dragWin.scaleFactor().then(s => { if (s) __dragScale = s; }).catch(() => {});
+  __dragWin.outerPosition().then(p => { __dragPos = { x: p.x, y: p.y }; }).catch(() => {});
+}
 (() => {
-  let drag = null;
-  async function winApi() {
-    try {
-      const m = await import("@tauri-apps/api/window");
-      return { win: m.getCurrentWindow(), LogicalPosition: m.LogicalPosition };
-    } catch { return null; }
-  }
+  let armed = null;
   function bindDrag() {
     const bar = document.getElementById("topbar");
     if (!bar) { setTimeout(bindDrag, 300); return; }
-    bar.addEventListener("mousedown", async (e) => {
-      if (e.button !== 0) return;
+    bar.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 || !__dragWin) return;
       if (e.target.closest("button, input, a, select, textarea")) return;
-      const api = await winApi();
-      if (!api) return;
-      const [pos, scale] = await Promise.all([
-        api.win.outerPosition().catch(() => null),
-        api.win.scaleFactor().catch(() => 1),
-      ]);
-      if (!pos) return;
-      drag = { x0: e.clientX, y0: e.clientY, wx: pos.x, wy: pos.y, s: scale || 1, api };
+      armed = { x0: e.clientX, y0: e.clientY };
+      // Refresh cached position in background (cheap; keeps cache honest)
+      __dragWin.outerPosition().then(p => { __dragPos = { x: p.x, y: p.y }; }).catch(() => {});
       e.preventDefault();
     });
     window.addEventListener("mousemove", (e) => {
-      if (!drag) return;
-      if (e.buttons !== 1) { drag = null; return; }
-      const dx = (e.clientX - drag.x0) * drag.s;
-      const dy = (e.clientY - drag.y0) * drag.s;
-      const nx = (drag.wx + dx) / drag.s;
-      const ny = (drag.wy + dy) / drag.s;
-      drag.api.win.setPosition(new drag.api.LogicalPosition(nx, ny)).catch(() => {});
+      if (!armed || !__dragWin || !__dragPos) return;
+      if (e.buttons !== 1) { armed = null; return; }
+      const dx = (e.clientX - armed.x0) * __dragScale;
+      const dy = (e.clientY - armed.y0) * __dragScale;
+      const nx = (__dragPos.x + dx) / __dragScale;
+      const ny = (__dragPos.y + dy) / __dragScale;
+      __dragPos = { x: __dragPos.x + dx, y: __dragPos.y + dy };  // update cache synchronously
+      __dragWin.setPosition(new LogicalPosition(nx, ny)).catch(() => {});
     });
-    window.addEventListener("mouseup", () => { drag = null; });
-    window.addEventListener("blur", () => { drag = null; });
+    const clear = () => { armed = null; };
+    window.addEventListener("mouseup", clear);
+    window.addEventListener("blur", clear);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bindDrag);

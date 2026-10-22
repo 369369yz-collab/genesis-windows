@@ -18,11 +18,12 @@ name: GENESIS COMPLETE — verification (guardian evidence)
 #       string appearing anywhere is FAIL; 06-chat-reply.png is evidence.
 # Coordinates of the final file come from workflow_dispatch inputs or
 # repository variables COMPLETE_SETUP_RELEASE / _SHA256 / _SIZE / _KIND.
-# The file is distributed as 4 parts on the genesis-complete-1.0.0
-# prerelease; V1 downloads the parts with the workflow token and joins
-# them, then applies the same size + sha256 fail-closed checks to the
-# joined bytes. (Path ALEF, YZ-approved 2026-10-22: the old single-URL
-# Drive coordinate pointed at superseded bytes and is retired.)
+# The file is distributed as 12 parts (part12-00..part12-11) on the
+# genesis-complete-1.0.0 prerelease; V1 downloads the parts with the
+# workflow token and joins them, then applies the same size + sha256
+# fail-closed checks to the joined bytes. (Path ALEF, YZ-approved
+# 2026-10-22: the old single-URL Drive coordinate pointed at
+# superseded bytes and is retired.)
 # Bootstrapper route (kind=boot, 2026-10-22): the joined >4 GiB file
 # cannot be LAUNCHED by the Windows loader (runs 39665797415 /
 # 39678558530 / 39764072162: V1 byte-verified, V3 error 193 class).
@@ -105,14 +106,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $parts = "$env:RUNNER_TEMP\setup_parts"; New-Item -ItemType Directory -Force $parts | Out-Null
-          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $parts
+          gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*" --dir $parts
           if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: setup parts download failed"; exit 1 }
           $dst = "$env:RUNNER_TEMP\GENESIS-Complete-setup.exe"
           $out = [System.IO.File]::Create($dst)
           try {
-            foreach ($i in 0..3) {
-              $p = Join-Path $parts ("GENESIS.Complete_1.0.0_x64-setup.exe.part-0$i")
-              if (-not (Test-Path $p)) { Write-Error "VERIFY-RED: missing part-0$i"; exit 1 }
+            foreach ($i in 0..11) {
+              $n = "GENESIS.Complete_1.0.0_x64-setup.exe.part12-$($i.ToString('00'))"
+              $p = Join-Path $parts $n
+              if (-not (Test-Path $p)) { Write-Error "VERIFY-RED: missing $n"; exit 1 }
               $inp = [System.IO.File]::OpenRead($p)
               try { $inp.CopyTo($out) } finally { $inp.Dispose() }
             }
@@ -156,7 +158,7 @@ jobs:
             # model checks as the sfx branch apply afterwards.
             $bootDir = "$env:RUNNER_TEMP\boot"
             New-Item -ItemType Directory -Force $bootDir | Out-Null
-            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $bootDir
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*" --dir $bootDir
             if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: parts download failed (boot)"; exit 1 }
             gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-bootstrapper.exe" --dir $bootDir
             if ($LASTEXITCODE -ne 0) { Write-Error "VERIFY-RED: bootstrapper download failed"; exit 1 }

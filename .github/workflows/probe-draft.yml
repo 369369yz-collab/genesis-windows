@@ -1,0 +1,45 @@
+name: PROBE — draft release asset access (temp, delete after use)
+
+# One-off probe for the GENESIS COMPLETE path-ALEF CI design: can the
+# workflow GITHUB_TOKEN download assets from the DRAFT prerelease
+# genesis-complete-1.0.0 in this same repo? Tests contents:read and
+# contents:write token variants in parallel jobs. Downloads only the
+# 694-byte JOIN_PARTS.bat as proof. DELETE THIS FILE after the probe.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  read-token:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Draft asset download with contents:read token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\probe-read"; New-Item -ItemType Directory -Force $dir | Out-Null
+          gh release download genesis-complete-1.0.0 --repo "${{ github.repository }}" --pattern "JOIN_PARTS.bat" --dir $dir
+          if ($LASTEXITCODE -ne 0) { Write-Error "PROBE-READ FAIL: gh exit $LASTEXITCODE"; exit 1 }
+          $f = Get-Item "$dir\JOIN_PARTS.bat"
+          Write-Host "PROBE-READ OK: JOIN_PARTS.bat $($f.Length) bytes"
+          if ($f.Length -ne 694) { Write-Error "PROBE-READ FAIL: size mismatch"; exit 1 }
+
+  write-token:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Draft asset download with contents:write token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\probe-write"; New-Item -ItemType Directory -Force $dir | Out-Null
+          gh release download genesis-complete-1.0.0 --repo "${{ github.repository }}" --pattern "JOIN_PARTS.bat" --dir $dir
+          if ($LASTEXITCODE -ne 0) { Write-Error "PROBE-WRITE FAIL: gh exit $LASTEXITCODE"; exit 1 }
+          $f = Get-Item "$dir\JOIN_PARTS.bat"
+          Write-Host "PROBE-WRITE OK: JOIN_PARTS.bat $($f.Length) bytes"
+          if ($f.Length -ne 694) { Write-Error "PROBE-WRITE FAIL: size mismatch"; exit 1 }

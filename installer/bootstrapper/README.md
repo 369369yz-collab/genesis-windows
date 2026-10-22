@@ -29,10 +29,10 @@ The payload is reused byte-for-byte; nothing is repacked.
 
 ## Pins
 
-- Joined file: 6,030,882,143 B, sha256
-  `27164113c5971391707e48b632864d0b5e51eefd3c3beb0fe9cdf1febcef8dc2`
-- Parts: 1,572,864,000 / 1,572,864,000 / 1,572,864,000 / 1,312,290,143 B
-- Payload entries: `setup/GENESIS-Full-Setup.exe` 179,679,674 B ·
+- Joined file: 6,030,832,317 B, sha256
+  `7edb42627afde8163724e2b2b9709d96f83ab09120bc331821b92541f7721f4e`
+- Parts: 1,572,864,000 / 1,572,864,000 / 1,572,864,000 / 1,312,240,317 B
+- Payload entries: `setup/GENESIS-Full-Setup.exe` 179,629,850 B ·
   `payload/genesis_369_v1_Q5_K_M.gguf` 5,851,112,800 B ·
   `full-launcher.exe` 43,520 B
 - Engine: see `engine/PROVENANCE.md`

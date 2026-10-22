@@ -48,11 +48,11 @@
 /* ---------- distribution pins (fail-closed) ---------- */
 
 #define JOINED_NAME_W   L"GENESIS.Complete_1.0.0_x64-setup.exe"
-#define JOINED_SIZE     6030882143ULL
-#define JOINED_SHA256   "27164113c5971391707e48b632864d0b5e51eefd3c3beb0fe9cdf1febcef8dc2"
+#define JOINED_SIZE     6030832317ULL
+#define JOINED_SHA256   "7edb42627afde8163724e2b2b9709d96f83ab09120bc331821b92541f7721f4e"
 #define PART_COUNT      4
 static const unsigned long long PART_SIZES[PART_COUNT] = {
-    1572864000ULL, 1572864000ULL, 1572864000ULL, 1312290143ULL
+    1572864000ULL, 1572864000ULL, 1572864000ULL, 1312240317ULL
 };
 static const wchar_t *PART_NAMES[PART_COUNT] = {
     L"GENESIS.Complete_1.0.0_x64-setup.exe.part-00",
@@ -63,7 +63,7 @@ static const wchar_t *PART_NAMES[PART_COUNT] = {
 
 /* extracted payload entry pins (sizes; full-launcher re-verifies the
    model SHA-256 itself before anything is installed from it) */
-#define SETUP_EXE_SIZE    179679674ULL
+#define SETUP_EXE_SIZE    179629850ULL
 #define MODEL_SIZE_BYTES  5851112800ULL
 #define LAUNCHER_SIZE     43520ULL
 

@@ -48,11 +48,11 @@
 /* ---------- distribution pins (fail-closed) ---------- */
 
 #define JOINED_NAME_W   L"GENESIS.Complete_1.0.0_x64-setup.exe"
-#define JOINED_SIZE     6030867148ULL
-#define JOINED_SHA256   "faf3016fef1be7bdfbecdbbe8510ecf334559a716ab2e6ecfeade60578e24e54"
+#define JOINED_SIZE     6030852195ULL
+#define JOINED_SHA256   "32a1ce16d7a979561f774bf867acb77e4fcba77f54546f21ca2b556597c50181"
 #define PART_COUNT      4
 static const unsigned long long PART_SIZES[PART_COUNT] = {
-    1572864000ULL, 1572864000ULL, 1572864000ULL, 1312275148ULL
+    1572864000ULL, 1572864000ULL, 1572864000ULL, 1312260195ULL
 };
 static const wchar_t *PART_NAMES[PART_COUNT] = {
     L"GENESIS.Complete_1.0.0_x64-setup.exe.part-00",
@@ -63,7 +63,7 @@ static const wchar_t *PART_NAMES[PART_COUNT] = {
 
 /* extracted payload entry pins (sizes; full-launcher re-verifies the
    model SHA-256 itself before anything is installed from it) */
-#define SETUP_EXE_SIZE    179664674ULL
+#define SETUP_EXE_SIZE    179649722ULL
 #define MODEL_SIZE_BYTES  5851112800ULL
 #define LAUNCHER_SIZE     43520ULL
 
@@ -287,7 +287,7 @@ int main(void) {
     {
         ULARGE_INTEGER freeb;
         if (GetDiskFreeSpaceExW(own, &freeb, NULL, NULL)) {
-            unsigned long long need = JOINED_SIZE + 6030821292ULL + 268435456ULL;
+            unsigned long long need = JOINED_SIZE + 6030806339ULL + 268435456ULL;
             wchar_t joined_path[1400];
             path_join(joined_path, 1400, own, JOINED_NAME_W);
             if (file_exists(joined_path) && file_size(joined_path) == JOINED_SIZE)

@@ -175,14 +175,28 @@ jobs:
               if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
             }
             if (-not $ok) { Write-Error "VERIFY-RED: bootstrapper did not pre-place the model in 900s"; exit 1 }
-            $mh = (Get-FileHash $modelDest -Algorithm SHA256).Hash
-            Write-Host "pre-placed model sha256: $mh"
-            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: pre-placed model hash != pin"; exit 1 }
+            # Sequencing (run 39765939008 lesson): right after placement
+            # the GGUF is still held open — full-launcher sha-verifies
+            # it, then the auto-launched app's llama-server opens it —
+            # so an immediate Get-FileHash races the lock and fails
+            # ("process cannot access the file"). Wait for the
+            # bootstrapper chain to exit, stop the auto-launched app,
+            # THEN hash the quiesced file (bounded retry while the lock
+            # drains). The check is unchanged: full SHA-256 == pin.
+            $p.WaitForExit(300000) | Out-Null
+            if ($p.HasExited) { Write-Host "bootstrapper exit code: $($p.ExitCode)" }
             Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             foreach ($n in @("llama-server-vulkan","llama-server-cpu")) {
               Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             }
             Start-Sleep -Seconds 3
+            $mh = $null
+            for ($i = 0; $i -lt 6 -and -not $mh; $i++) {
+              try { $mh = (Get-FileHash $modelDest -Algorithm SHA256 -ErrorAction Stop).Hash } catch { Start-Sleep -Seconds 10 }
+            }
+            if (-not $mh) { Write-Error "VERIFY-RED: placed model stayed locked/unreadable 60s after app stop"; exit 1 }
+            Write-Host "pre-placed model sha256: $mh"
+            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "VERIFY-RED: pre-placed model hash != pin"; exit 1 }
             Write-Host "V3 PASS (boot): bootstrapper joined+verified+extracted, model pre-placed hash = pin; auto-launched app stopped for CDP relaunch"
           } else {
             # SFX route: the file self-extracts; full-launcher installs the

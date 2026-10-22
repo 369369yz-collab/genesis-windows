@@ -147,10 +147,22 @@ jobs:
               if ((Test-Path $modelDest) -and (Get-Item $modelDest).Length -eq 5851112800) { $ok = $true }
             }
             if (-not $ok) { Write-Error "BIRTH-RED: bootstrapper did not pre-place model in 900s"; exit 1 }
-            if ((Get-FileHash $modelDest -Algorithm SHA256).Hash -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
+            # Sequencing (run 39765939008 lesson, same as verify V3):
+            # wait for the bootstrapper chain to exit and stop the
+            # auto-launched app BEFORE hashing the placed model — the
+            # file is held open by the launcher/app until then. The
+            # check is unchanged: full SHA-256 == pin, fail-closed.
+            $p.WaitForExit(300000) | Out-Null
+            if ($p.HasExited) { Write-Host "bootstrapper exit code: $($p.ExitCode)" }
             Get-Process -Name "genesis-final" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "llama-server*" } | Stop-Process -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
+            $mh = $null
+            for ($i = 0; $i -lt 6 -and -not $mh; $i++) {
+              try { $mh = (Get-FileHash $modelDest -Algorithm SHA256 -ErrorAction Stop).Hash } catch { Start-Sleep -Seconds 10 }
+            }
+            if (-not $mh) { Write-Error "BIRTH-RED: placed model stayed locked/unreadable 60s after app stop"; exit 1 }
+            if ($mh -ne $env:MODEL_SHA_PIN) { Write-Error "BIRTH-RED: model hash != pin"; exit 1 }
             $hives = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
                        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")
             $entry = $null

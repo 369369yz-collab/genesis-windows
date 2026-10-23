@@ -129,7 +129,7 @@ jobs:
             # exactly as in the sfx branch.
             $bootDir = "$env:RUNNER_TEMP\boot"
             New-Item -ItemType Directory -Force $bootDir | Out-Null
-            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part-*" --dir $bootDir
+            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*" --dir $bootDir
             if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: parts download failed (boot)"; exit 1 }
             gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-bootstrapper.exe" --dir $bootDir
             if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: bootstrapper download failed"; exit 1 }

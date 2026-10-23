@@ -1,0 +1,62 @@
+name: hub-watchdog
+
+# NEVER-STOP external witness (mission temp-neverstop-1023, 2026-10-23).
+# Role: DETECTION + ALERT ONLY (GitHub Actions ToS: no engine workloads here).
+# It pings the 369 bridge health endpoint from outside our infrastructure.
+# HONEST SCOPE: the bridge runs on PythonAnywhere, so this witnesses BRIDGE
+# liveness. It cannot see the VM-local n8n hub (127.0.0.1:5678 is not publicly
+# routed). The hub's own dead-man's witness is healthchecks.io, fed by a
+# heartbeat ping from the VM itself (~/workspace/n8n_hub/scripts/heartbeat_ping.sh).
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  ping-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping bridge health endpoint
+        id: ping
+        run: |
+          code=$(curl -s -o /tmp/body.txt -w '%{http_code}' -m 25 https://369yz.pythonanywhere.com/health || echo 000)
+          echo "HTTP $code"
+          cat /tmp/body.txt || true
+          if [ "$code" = "200" ] && grep -q '"ok": true' /tmp/body.txt; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open alert issue on failure (deduped)
+        if: steps.ping.outputs.ok != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner, repo = context.repo.repo;
+            try {
+              await github.rest.issues.createLabel({ owner, repo, name: 'watchdog', color: 'd73a4a', description: 'Automated watchdog alerts' });
+            } catch (e) { /* label already exists */ }
+            const open = await github.rest.issues.listForRepo({ owner, repo, state: 'open', labels: 'watchdog' });
+            if (open.data.length > 0) {
+              console.log('Watchdog issue already open — not duplicating.');
+              return;
+            }
+            await github.rest.issues.create({
+              owner, repo,
+              title: 'WATCHDOG: 369 bridge health check failed',
+              labels: ['watchdog'],
+              body: [
+                'The scheduled hub-watchdog could not confirm bridge health:',
+                '`GET https://369yz.pythonanywhere.com/health` did not return `{"ok": true}`.',
+                '',
+                'Scope note: this witnesses the bridge (PythonAnywhere) only.',
+                'The VM n8n hub heartbeat is witnessed separately via healthchecks.io.',
+                `Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+              ].join('\n')
+            });

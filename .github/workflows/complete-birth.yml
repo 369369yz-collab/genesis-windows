@@ -129,10 +129,17 @@ jobs:
             # exactly as in the sfx branch.
             $bootDir = "$env:RUNNER_TEMP\boot"
             New-Item -ItemType Directory -Force $bootDir | Out-Null
-            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*" --dir $bootDir
-            if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: parts download failed (boot)"; exit 1 }
-            gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern "GENESIS.Complete_1.0.0_x64-bootstrapper.exe" --dir $bootDir
-            if ($LASTEXITCODE -ne 0) { Write-Error "BIRTH-RED: bootstrapper download failed"; exit 1 }
+            function Invoke-ReleaseDownload($pattern) {
+              for ($a = 1; $a -le 3; $a++) {
+                gh release download $env:SETUP_RELEASE --repo "${{ github.repository }}" --pattern $pattern --dir $bootDir
+                if ($LASTEXITCODE -eq 0) { return $true }
+                Write-Host "download attempt $a/3 failed for pattern '$pattern' (exit $($LASTEXITCODE)); retrying in 30s"
+                Start-Sleep -Seconds 30
+              }
+              return $false
+            }
+            if (-not (Invoke-ReleaseDownload "GENESIS.Complete_1.0.0_x64-setup.exe.part12-*")) { Write-Error "BIRTH-RED: parts download failed (boot, 3 attempts)"; exit 1 }
+            if (-not (Invoke-ReleaseDownload "GENESIS.Complete_1.0.0_x64-bootstrapper.exe")) { Write-Error "BIRTH-RED: bootstrapper download failed (3 attempts)"; exit 1 }
             $bootExe = Join-Path $bootDir "GENESIS.Complete_1.0.0_x64-bootstrapper.exe"
             $bf = Get-Item $bootExe
             $bh = (Get-FileHash $bootExe -Algorithm SHA256).Hash.ToLower()
